@@ -1,0 +1,65 @@
+export type Role = "CMO" | "Business Analyst" | "CFO" | "Sales Director" | "HR Specialist" | "CEO";
+
+export interface ColumnMetadata {
+  name: string;
+  type: "number" | "string" | "date";
+}
+
+export interface Measure {
+  id: string;
+  name: string;
+  formula: string; // e.g. "SUM(spend)" or "[Total Revenue] / [Total Spend]"
+  expressionType: "simple" | "custom"; // simple = SUM/AVG/COUNT on column, custom = expression of other measures
+  columnName?: string; // for simple types
+  aggregation?: "SUM" | "AVG" | "COUNT" | "MIN" | "MAX"; // for simple types
+  format: "number" | "currency" | "percent" | "integer";
+  isCustom: boolean;
+  description: string;
+  category?: string;
+}
+
+export type ChartType = "kpi" | "bar" | "line" | "area" | "pie" | "scatter" | "radar" | "funnel" | "combo" | "table";
+
+export interface WidgetConfig {
+  xAxis: string;
+  yAxisMeasures: string[]; // List of measure IDs to plot
+  colorTheme: string; // Tailwind color class stem (e.g. "indigo", "emerald", "amber")
+  showLegend: boolean;
+  showGrid: boolean;
+  limit?: number;
+}
+
+export interface Widget {
+  id: string;
+  title: string;
+  type: ChartType;
+  config: WidgetConfig;
+  gridSpan?: "col-span-1" | "col-span-2" | "col-span-3" | "col-span-4" | "col-span-5" | "col-span-6";
+}
+
+export interface AIInsight {
+  title: string;
+  description: string;
+  impact: "high" | "medium" | "low";
+  metricAffected: string;
+}
+
+export interface AISuggestedKPI {
+  name: string;
+  formula: string;
+  description: string;
+}
+
+export interface AIRecommendedChart {
+  title: string;
+  chartType: ChartType;
+  xAxis: string;
+  yAxis: string;
+  reason: string;
+}
+
+export interface AIAnalysisResult {
+  insights: AIInsight[];
+  suggestedKPIs: AISuggestedKPI[];
+  recommendedCharts: AIRecommendedChart[];
+}

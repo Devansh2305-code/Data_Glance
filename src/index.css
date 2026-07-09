@@ -1,0 +1,342 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Space+Grotesk:wght@300..700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply font-sans antialiased text-slate-800 bg-slate-50;
+  }
+}
+
+/* Custom print media styles for high fidelity A4 report export */
+@media print {
+  body {
+    background-color: white !important;
+    color: black !important;
+  }
+  
+  .print\:hidden {
+    display: none !important;
+  }
+  
+  #app-viewport-frame {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  main {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  #dashboard-grid-canvas {
+    display: grid !important;
+    grid-template-cols: repeat(6, minmax(0, 1fr)) !important;
+    gap: 1.5rem !important;
+    width: 100% !important;
+    page-break-inside: avoid !important;
+  }
+  
+  .col-span-1 { grid-column: span 1 / span 1 !important; }
+  .col-span-2 { grid-column: span 2 / span 2 !important; }
+  .col-span-3 { grid-column: span 3 / span 3 !important; }
+  .col-span-4 { grid-column: span 4 / span 4 !important; }
+  .col-span-6 { grid-column: span 6 / span 6 !important; }
+  
+  #report-canvas-container {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .recharts-responsive-container {
+    width: 100% !important;
+    height: 300px !important;
+  }
+}
+
+/* ==========================================
+ * DARK MODE HIGH-FIDELITY OVERRIDES
+ * ========================================== */
+
+/* Dark Mode Core Theme Overrides */
+.dark body, 
+html.dark {
+  background-color: #0b0f19 !important; /* deep rich dark background */
+  color: #f1f5f9 !important; /* slate-100 */
+}
+
+/* Base Wrapper and Main content */
+.dark #app-viewport-frame,
+.dark main,
+.dark .bg-slate-50,
+.dark .bg-slate-100 {
+  background-color: #0b0f19 !important;
+}
+
+/* Sidebar Dark overrides */
+.dark #sidebar-container {
+  background-color: #111827 !important; /* dark gray background */
+  border-color: #1f2937 !important;
+  color: #9ca3af !important;
+}
+.dark #sidebar-container h1,
+.dark #sidebar-container label,
+.dark #sidebar-container .text-slate-900 {
+  color: #f9fafb !important;
+}
+.dark #sidebar-container .border-slate-200,
+.dark #sidebar-container .border-b,
+.dark #sidebar-container .border-t {
+  border-color: #1f2937 !important;
+}
+.dark #sidebar-container .bg-slate-50\/50,
+.dark #sidebar-container .bg-slate-50 {
+  background-color: #1f2937 !important;
+}
+.dark #sidebar-container button:hover {
+  background-color: #1f2937 !important;
+  color: #f3f4f6 !important;
+}
+.dark #sidebar-container button.bg-blue-50 {
+  background-color: #1e3a8a !important;
+  border-color: #3b82f6 !important;
+  color: #f3f4f6 !important;
+}
+.dark #sidebar-container button.bg-blue-50 .text-blue-700 {
+  color: #3b82f6 !important;
+}
+
+/* App Header & Containers */
+.dark header {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+  color: #f3f4f6 !important;
+}
+.dark header .bg-slate-100 {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+}
+.dark header .text-blue-700 {
+  color: #60a5fa !important;
+}
+
+/* Grid & Cards */
+.dark .bg-white {
+  background-color: #1f2937 !important; /* gray-800 */
+  border-color: #374151 !important; /* gray-700 */
+  color: #f9fafb !important;
+}
+.dark .text-slate-800,
+.dark .text-slate-700,
+.dark .text-slate-900,
+.dark h2,
+.dark h3,
+.dark h4 {
+  color: #f9fafb !important;
+}
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: #9ca3af !important; /* gray-400 */
+}
+.dark .border-slate-200,
+.dark .border-slate-100,
+.dark .border-slate-150 {
+  border-color: #374151 !important;
+}
+
+/* Dropdown / Popups / Panels / Modals */
+.dark #format-panel-flyout,
+.dark #measure-creator-panel,
+.dark #data-importer-container,
+.dark #add-visual-modal,
+.dark .shadow-xl {
+  background-color: #111827 !important;
+  border-color: #374151 !important;
+}
+
+/* Inputs / Textareas / Selects */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #111827 !important;
+  border-color: #374151 !important;
+  color: #f9fafb !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #6b7280 !important;
+}
+
+/* Tables */
+.dark table th {
+  background-color: #111827 !important;
+  color: #f9fafb !important;
+  border-color: #374151 !important;
+}
+.dark table td {
+  border-color: #374151 !important;
+  color: #d1d5db !important;
+}
+.dark tr:hover {
+  background-color: #1f2937 !important;
+}
+
+/* KPI Recommend and Narrative panels */
+.dark .bg-gradient-to-r {
+  border: 1px solid #374151;
+}
+
+/* Recharts elements - Tooltips, Grids, etc. */
+.dark .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: #111827 !important;
+  border-color: #374151 !important;
+  color: #f9fafb !important;
+}
+.dark .recharts-text {
+  fill: #9ca3af !important;
+}
+.dark .recharts-cartesian-grid-horizontal line,
+.dark .recharts-cartesian-grid-vertical line {
+  stroke: #374151 !important;
+}
+.dark .recharts-legend-item-text {
+  color: #f3f4f6 !important;
+}
+
+/* ==========================================
+ * HIGH CONTRAST MARKDOWN STYLING & DARK MODE OVERRIDES
+ * ========================================== */
+.markdown-body {
+  line-height: 1.6;
+}
+.markdown-body p {
+  margin-bottom: 0.75rem;
+}
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+.markdown-body strong {
+  font-weight: 600;
+  color: #0f172a !important; /* slate-900 */
+}
+.markdown-body ul, .markdown-body ol {
+  margin-left: 1.25rem;
+  margin-bottom: 0.75rem;
+  list-style-type: disc;
+}
+.markdown-body ol {
+  list-style-type: decimal;
+}
+.markdown-body li {
+  margin-bottom: 0.25rem;
+}
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+  font-weight: 700;
+  color: #0f172a !important; /* slate-900 */
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Dark mode specific rules for Markdown elements */
+.dark .markdown-body {
+  color: #f1f5f9 !important; /* slate-100 */
+}
+.dark .markdown-body strong {
+  color: #ffffff !important;
+}
+.dark .markdown-body h1, 
+.dark .markdown-body h2, 
+.dark .markdown-body h3, 
+.dark .markdown-body h4 {
+  color: #ffffff !important;
+}
+.dark .markdown-body code {
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+}
+.dark .markdown-body li {
+  color: #f1f5f9 !important;
+}
+
+/* ==========================================
+ * HIGH CONTRAST NARRATIVE CARDS FOR LIGHT & DARK MODES
+ * ========================================== */
+.narrative-card-high {
+  background-color: #fef2f2 !important; /* soft rose */
+  border-color: #fca5a5 !important; /* border red-300 */
+}
+.narrative-card-high p {
+  color: #1e293b !important; /* slate-800 - high contrast dark text */
+}
+.narrative-card-high h4 {
+  color: #991b1b !important; /* deep red-800 */
+}
+
+.narrative-card-med {
+  background-color: #fffbeb !important; /* soft amber */
+  border-color: #fcd34d !important; /* border amber-300 */
+}
+.narrative-card-med p {
+  color: #1e293b !important; /* slate-800 - high contrast dark text */
+}
+.narrative-card-med h4 {
+  color: #92400e !important; /* amber-800 */
+}
+
+.narrative-card-low {
+  background-color: #f8fafc !important; /* soft slate */
+  border-color: #cbd5e1 !important; /* border slate-300 */
+}
+.narrative-card-low p {
+  color: #1e293b !important; /* slate-800 - high contrast dark text */
+}
+.narrative-card-low h4 {
+  color: #0f172a !important; /* slate-900 */
+}
+
+/* Dark Mode Overrides for Narrative Cards */
+.dark .narrative-card-high {
+  background-color: #1b1112 !important; /* rich deep dark rose */
+  border-color: #991b1b !important; /* border-rose-800 */
+}
+.dark .narrative-card-high p {
+  color: #f1f5f9 !important; /* slate-100 */
+}
+.dark .narrative-card-high h4 {
+  color: #fecaca !important; /* rose-200 */
+}
+
+.dark .narrative-card-med {
+  background-color: #1a150e !important; /* rich deep dark amber */
+  border-color: #92400e !important; /* border-amber-800 */
+}
+.dark .narrative-card-med p {
+  color: #f1f5f9 !important; /* slate-100 */
+}
+.dark .narrative-card-med h4 {
+  color: #fde68a !important; /* amber-200 */
+}
+
+.dark .narrative-card-low {
+  background-color: #111827 !important; /* gray-900 / slate-900 */
+  border-color: #374151 !important; /* border-slate-700 */
+}
+.dark .narrative-card-low p {
+  color: #f1f5f9 !important; /* slate-100 */
+}
+.dark .narrative-card-low h4 {
+  color: #f9fafb !important; /* slate-50 */
+}
+
+
+
