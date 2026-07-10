@@ -4,17 +4,21 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 
-dotenv.config();
-
 const app = express();
 const PORT = 3000;
 
-// Set up Gemini AI client
-const apiKey = process.env.GEMINI_API_KEY;
-let ai: GoogleGenAI | null = null;
+// Helper to lazily load and initialize the Gemini API client
+function getGenAIClient(): GoogleGenAI {
+  // Load environment variables dynamically, prioritizing .env.local if present
+  dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
+  dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
-if (apiKey) {
-  ai = new GoogleGenAI({
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not defined. Please make sure you have added your GEMINI_API_KEY inside the Secrets panel.");
+  }
+
+  return new GoogleGenAI({
     apiKey: apiKey,
     httpOptions: {
       headers: {
@@ -22,8 +26,6 @@ if (apiKey) {
       },
     },
   });
-} else {
-  console.warn("WARNING: GEMINI_API_KEY is not defined in the environment.");
 }
 
 app.use(express.json({ limit: "10mb" }));
@@ -37,9 +39,12 @@ app.post("/api/analyze", async (req, res) => {
       return res.status(400).json({ error: "No data provided for analysis." });
     }
 
-    if (!ai) {
+    let ai: GoogleGenAI;
+    try {
+      ai = getGenAIClient();
+    } catch (e: any) {
       return res.status(503).json({
-        error: "AI analysis is currently unavailable (Gemini API key is not configured). Please check your Secrets in Settings.",
+        error: e.message || "AI analysis is currently unavailable (Gemini API key is not configured). Please check your Secrets in Settings.",
       });
     }
 
@@ -161,9 +166,12 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "No conversation history provided." });
     }
 
-    if (!ai) {
+    let ai: GoogleGenAI;
+    try {
+      ai = getGenAIClient();
+    } catch (e: any) {
       return res.status(503).json({
-        error: "AI Chat is currently unavailable (Gemini API key is not configured). Please check your Secrets in Settings.",
+        error: e.message || "AI Chat is currently unavailable (Gemini API key is not configured). Please check your Secrets in Settings.",
       });
     }
 

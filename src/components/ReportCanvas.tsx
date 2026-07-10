@@ -60,6 +60,7 @@ interface ReportCanvasProps {
   onRemoveWidget: (id: string) => void;
   onUpdateWidget: (id: string, updated: Partial<Widget>) => void;
   onReorderWidgets?: (widgets: Widget[]) => void;
+  onDownloadReport: (filters: Record<string, string>) => void;
 }
 
 const PALETTE_COLORS: Record<string, string[]> = {
@@ -98,7 +99,8 @@ export default function ReportCanvas({
   onAddWidget,
   onRemoveWidget,
   onUpdateWidget,
-  onReorderWidgets
+  onReorderWidgets,
+  onDownloadReport
 }: ReportCanvasProps) {
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -336,8 +338,7 @@ export default function ReportCanvas({
   };
 
   const handlePrintReport = () => {
-    window.focus();
-    window.print();
+    onDownloadReport(globalFilters);
   };
 
   // Helper function to extract trend points for a sparkline

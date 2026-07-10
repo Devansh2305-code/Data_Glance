@@ -24,6 +24,8 @@ interface AIInsightsPanelProps {
   columns: ColumnMetadata[];
   measures: Measure[];
   onAddWidget: (widget: Widget) => void;
+  result: AIAnalysisResult | null;
+  setResult: (res: AIAnalysisResult | null) => void;
 }
 
 interface ChatMessage {
@@ -37,14 +39,15 @@ export default function AIInsightsPanel({
   activeRole,
   columns,
   measures,
-  onAddWidget
+  onAddWidget,
+  result,
+  setResult
 }: AIInsightsPanelProps) {
   // Tab control state
   const [activeTab, setActiveTab] = useState<"audit" | "chat">("audit");
 
   // Executive Audit States
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<AIAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [appliedChartIds, setAppliedChartIds] = useState<Record<string, boolean>>({});
 

@@ -10,8 +10,9 @@ import ReportCanvas from "./components/ReportCanvas";
 import DataTableView from "./components/DataTableView";
 import MeasuresManager from "./components/MeasuresManager";
 import AIInsightsPanel from "./components/AIInsightsPanel";
-import { Role, ColumnMetadata, Measure, Widget } from "./types";
+import { Role, ColumnMetadata, Measure, Widget, AIAnalysisResult } from "./types";
 import { getTemplateForRole } from "./utils";
+import { downloadHTMLReport } from "./reportGenerator";
 import { 
   Database, 
   RefreshCw, 
@@ -24,7 +25,6 @@ import {
   Sun,
   Moon,
   FileDown,
-  ExternalLink,
   Menu
 } from "lucide-react";
 
@@ -318,6 +318,8 @@ export default function App() {
     return localStorage.getItem("theme-mode") === "dark";
   });
 
+  const [aiAnalysisResult, setAiAnalysisResult] = useState<AIAnalysisResult | null>(null);
+
   const isFirstMount = useRef(true);
 
   // Apply dark class and persist theme configuration
@@ -375,6 +377,7 @@ export default function App() {
     setColumns(template.columns);
     setMeasures(template.measures);
     setIsCustomDataset(false);
+    setAiAnalysisResult(null);
     // Setup matching widgets
     setWidgets(getDefaultWidgets(activeRole, template.measures));
   }, [activeRole]);
@@ -499,15 +502,30 @@ export default function App() {
     setWidgets(newWidgets);
   };
 
-  const handleDownloadReport = () => {
-    // Switch to active report view
-    setView("report");
-    setIsImportOpen(false);
-    
-    // Give state/DOM a tiny moment to flush and render charts beautifully before browser opens print dialog
-    setTimeout(() => {
-      window.print();
-    }, 250);
+  const handleDownloadReport = (filters: Record<string, string> = {}) => {
+    let filtered = dataset;
+    if (filters) {
+      filtered = dataset.filter(row => {
+        for (const [colName, val] of Object.entries(filters)) {
+          if (val) {
+            const rowVal = row[colName];
+            const rowValStr = rowVal === null || rowVal === undefined ? "" : String(rowVal);
+            if (rowValStr !== val) return false;
+          }
+        }
+        return true;
+      });
+    }
+
+    downloadHTMLReport(
+      filtered,
+      columns,
+      measures,
+      widgets,
+      activeRole,
+      filters,
+      aiAnalysisResult ? aiAnalysisResult.insights : null
+    );
   };
 
   return (
@@ -584,25 +602,13 @@ export default function App() {
 
             <button
               id="btn-global-download-report"
-              onClick={handleDownloadReport}
+              onClick={() => handleDownloadReport({})}
               className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold text-xs py-2 px-2.5 sm:px-3.5 rounded-lg transition flex items-center space-x-1.5 shadow-sm"
               title="Download clean executive report as PDF"
             >
               <FileDown className="w-4 h-4 text-slate-500 dark:text-slate-400" />
               <span className="hidden md:inline">Download Report</span>
             </button>
-
-            <a
-              id="btn-global-open-new-tab"
-              href={window.location.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold text-xs py-2 px-2.5 sm:px-3.5 rounded-lg transition flex items-center space-x-1.5 shadow-sm print:hidden"
-              title="Open preview in a new tab for perfect full-screen layout and print capabilities"
-            >
-              <ExternalLink className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              <span className="hidden md:inline">Open in New Tab</span>
-            </a>
 
             <button
               id="btn-toggle-importer"
@@ -646,6 +652,7 @@ export default function App() {
                   onRemoveWidget={handleRemoveWidget}
                   onUpdateWidget={handleUpdateWidget}
                   onReorderWidgets={handleReorderWidgets}
+                  onDownloadReport={handleDownloadReport}
                 />
               )}
 
@@ -680,6 +687,8 @@ export default function App() {
                     columns={columns}
                     measures={measures}
                     onAddWidget={handleAddWidget}
+                    result={aiAnalysisResult}
+                    setResult={setAiAnalysisResult}
                   />
                 </div>
               )}
