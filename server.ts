@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 
 const app = express();
 const PORT = 3000;
-
+console.log("GEMINI_API_KEY present:", !!process.env.GEMINI_API_KEY);
 // Helper to lazily load and initialize the Gemini API client
 function getGenAIClient(): GoogleGenAI {
   // Load environment variables dynamically, prioritizing .env.local if present
