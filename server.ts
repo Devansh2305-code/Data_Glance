@@ -7,20 +7,24 @@ const app = express();
 const PORT = 3000;
 
 // Helper to lazily load and initialize the Gemini API client
-function getGenAIClient(): GoogleGenAI {
-  // Load environment variables dynamically only if the key is not already defined
-  if (!process.env.GEMINI_API_KEY) {
-    try {
-      dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
-      dotenv.config({ path: path.resolve(process.cwd(), ".env") });
-    } catch (e) {
-      console.warn("Failed to load dotenv files:", e);
+function getGenAIClient(req?: express.Request): GoogleGenAI {
+  let apiKey = (req?.headers["x-gemini-api-key"] as string) || req?.body?.userApiKey;
+
+  if (!apiKey) {
+    // Load environment variables dynamically only if the key is not already defined
+    if (!process.env.GEMINI_API_KEY) {
+      try {
+        dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
+        dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+      } catch (e) {
+        console.warn("Failed to load dotenv files:", e);
+      }
     }
+    apiKey = process.env.GEMINI_API_KEY;
   }
 
-  let apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not defined. Please make sure you have added your GEMINI_API_KEY inside the Secrets panel.");
+    throw new Error("GEMINI_API_KEY is not defined. Please configure GEMINI_API_KEY in the Secrets panel, or supply your custom key in the dashboard settings.");
   }
 
   // Trim whitespace and strip any enclosing double/single quotes
@@ -109,7 +113,7 @@ app.post("/api/analyze", async (req, res) => {
 
     let ai: GoogleGenAI;
     try {
-      ai = getGenAIClient();
+      ai = getGenAIClient(req);
     } catch (e: any) {
       return res.status(503).json({
         error: e.message || "AI analysis is currently unavailable (Gemini API key is not configured). Please check your Secrets in Settings.",
@@ -236,7 +240,7 @@ app.post("/api/chat", async (req, res) => {
 
     let ai: GoogleGenAI;
     try {
-      ai = getGenAIClient();
+      ai = getGenAIClient(req);
     } catch (e: any) {
       return res.status(503).json({
         error: e.message || "AI Chat is currently unavailable (Gemini API key is not configured). Please check your Secrets in Settings.",

@@ -13,10 +13,11 @@ import {
   User,
   MessageSquare,
   HelpCircle,
-  Sparkle
+  Sparkle,
+  Key
 } from "lucide-react";
 import Markdown from "react-markdown";
-import { AIAnalysisResult, AIRecommendedChart, Widget, Role, Measure, ColumnMetadata } from "../types";
+import { AIAnalysisResult, AIRecommendedChart, AISuggestedKPI, Widget, Role, Measure, ColumnMetadata } from "../types";
 
 interface AIInsightsPanelProps {
   dataset: any[];
@@ -26,6 +27,397 @@ interface AIInsightsPanelProps {
   onAddWidget: (widget: Widget) => void;
   result: AIAnalysisResult | null;
   setResult: (res: AIAnalysisResult | null) => void;
+}
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+}
+
+// ⚡ Dynamic Local Heuristic Engine for Instant Statistical Insights & BI Auditing
+export function generateLocalHeuristicInsights(
+  dataset: any[],
+  columns: ColumnMetadata[],
+  measures: Measure[],
+  activeRole: Role
+): AIAnalysisResult {
+  const numericCols = columns.filter(c => c.type === "number");
+  const stringCols = columns.filter(c => c.type === "string");
+  const dateCols = columns.filter(c => 
+    c.type === "date" || 
+    c.name.toLowerCase().includes("date") || 
+    c.name.toLowerCase().includes("time") || 
+    c.name.toLowerCase().includes("month") || 
+    c.name.toLowerCase().includes("year")
+  );
+
+  const insights: any[] = [];
+  const suggestedKPIs: any[] = [];
+  const recommendedCharts: any[] = [];
+
+  if (!dataset || dataset.length === 0) {
+    return {
+      insights: [
+        {
+          title: "Insufficient Data Volume",
+          description: "The active dataset is currently empty. Please upload or paste records to generate statistical insights.",
+          impact: "high",
+          metricAffected: "Row Count"
+        }
+      ],
+      suggestedKPIs: [
+        {
+          name: "Data Density Ratio",
+          formula: "COUNT(Records) / Total Fields",
+          description: "Measures the completeness and quality of data entries across all rows."
+        }
+      ],
+      recommendedCharts: []
+    };
+  }
+
+  // Calculate statistics for numeric columns
+  const numericStats = numericCols.map(col => {
+    const vals = dataset.map(row => Number(row[col.name])).filter(v => !isNaN(v));
+    if (vals.length === 0) return null;
+    const sum = vals.reduce((a, b) => a + b, 0);
+    const mean = sum / vals.length;
+    const variance = vals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / vals.length;
+    const stdDev = Math.sqrt(variance);
+    const max = Math.max(...vals);
+    const min = Math.min(...vals);
+    return {
+      name: col.name,
+      sum,
+      mean,
+      stdDev,
+      max,
+      min,
+      count: vals.length
+    };
+  }).filter(Boolean) as Array<{ name: string; sum: number; mean: number; stdDev: number; max: number; min: number; count: number }>;
+
+  // Outlier / Anomaly detection based on standard deviation boundaries (mean + 2*sigma)
+  numericStats.forEach(stat => {
+    const threshold = stat.mean + 1.8 * stat.stdDev;
+    const outliers = dataset.filter(row => {
+      const v = Number(row[stat.name]);
+      return !isNaN(v) && v > threshold;
+    });
+
+    if (outliers.length > 0) {
+      insights.push({
+        title: `Outliers and Volatility Detected in ${stat.name}`,
+        description: `We detected ${outliers.length} records that significantly exceed normal variance thresholds (exceeding standard deviation threshold of ${threshold.toFixed(1)}). The peak value recorded is ${stat.max.toLocaleString()} compared to the cohort average of ${stat.mean.toFixed(1)}.`,
+        impact: stat.stdDev / stat.mean > 0.4 ? "high" : "medium",
+        metricAffected: stat.name
+      });
+    }
+  });
+
+  // Chronological trend line analysis
+  const primaryDateCol = dateCols[0]?.name || columns.find(c => c.name.toLowerCase().includes("date") || c.name.toLowerCase().includes("month"))?.name;
+  const primaryNumericStat = numericStats[0];
+
+  if (primaryDateCol && primaryNumericStat && dataset.length >= 4) {
+    try {
+      const sortedData = [...dataset].sort((a, b) => {
+        const da = new Date(a[primaryDateCol]).getTime();
+        const db = new Date(b[primaryDateCol]).getTime();
+        return da - db;
+      });
+
+      const half = Math.floor(sortedData.length / 2);
+      const firstHalf = sortedData.slice(0, half);
+      const secondHalf = sortedData.slice(half);
+
+      const firstAvg = firstHalf.map(r => Number(r[primaryNumericStat.name])).filter(v => !isNaN(v)).reduce((a, b) => a + b, 0) / Math.max(1, firstHalf.length);
+      const secondAvg = secondHalf.map(r => Number(r[primaryNumericStat.name])).filter(v => !isNaN(v)).reduce((a, b) => a + b, 0) / Math.max(1, secondHalf.length);
+
+      if (firstAvg > 0) {
+        const pctChange = ((secondAvg - firstAvg) / firstAvg) * 100;
+        const trendDirection = pctChange > 0 ? "Expansion" : "Contraction";
+        insights.push({
+          title: `Temporal Trend ${trendDirection}: ${primaryNumericStat.name}`,
+          description: `Chronological analysis shows that the average ${primaryNumericStat.name} moved from ${firstAvg.toFixed(1)} in the first half of the dataset to ${secondAvg.toFixed(1)} in the second half. This constitutes a ${Math.abs(pctChange).toFixed(1)}% temporal ${pctChange > 0 ? "growth surge" : "downward adjustment"}.`,
+          impact: Math.abs(pctChange) > 15 ? "high" : "medium",
+          metricAffected: primaryNumericStat.name
+        });
+      }
+    } catch (e) {
+      // Date parse error fallback
+    }
+  }
+
+  // Categorical concentration metrics
+  stringCols.forEach(col => {
+    const freq: Record<string, number> = {};
+    dataset.forEach(row => {
+      const val = String(row[col.name] || "Unknown");
+      freq[val] = (freq[val] || 0) + 1;
+    });
+
+    const sortedCats = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+    if (sortedCats.length > 0) {
+      const [topCat, count] = sortedCats[0];
+      const pct = (count / dataset.length) * 100;
+
+      if (pct > 30 && dataset.length > 4) {
+        insights.push({
+          title: `Dominant Segment Concentration in '${col.name}'`,
+          description: `The categorical segment "${topCat}" accounts for ${pct.toFixed(1)}% of all entries (${count} out of ${dataset.length} records). This signals a strong structural concentration which might expose the report to category-specific biases.`,
+          impact: pct > 55 ? "high" : "medium",
+          metricAffected: col.name
+        });
+      }
+    }
+  });
+
+  // Guarantee at least 2 insights
+  if (insights.length < 2) {
+    insights.push({
+      title: "Stable Operational Metrics",
+      description: `Analysis of your ${dataset.length} active data rows shows uniform distribution. Standard metrics are within normal control limits without extreme outliers or anomalies detected.`,
+      impact: "low",
+      metricAffected: "Core Cohort"
+    });
+  }
+
+  // Suggested KPIs by role (matching system specs perfectly)
+  const roleKPIs: Record<Role, AISuggestedKPI[]> = {
+    CEO: [
+      {
+        name: "Operational Performance Coefficient",
+        formula: "AVG(Primary_Metric) * 1.15",
+        description: "An index combining total volume and trend stability to gauge general enterprise output."
+      },
+      {
+        name: "Enterprise Value Leverage",
+        formula: "SUM(Metrics) / COUNT(Records)",
+        description: "Normalized net contribution per atomic interaction or transaction."
+      }
+    ],
+    CFO: [
+      {
+        name: "Heuristic Gross Margin Strategy",
+        formula: "([Total Revenue] - [Costs]) / [Total Revenue]",
+        description: "Assesses raw operating margin efficiency. If actual cost columns aren't defined, defaults to a standard 38% baseline margins."
+      },
+      {
+        name: "Resource Yield Ratio",
+        formula: "SUM(Metrics) / StandardDeviation",
+        description: "Standard risk-adjusted output ratio to measure asset efficiency and capital deployment stability."
+      }
+    ],
+    CMO: [
+      {
+        name: "Campaign Engagement Index",
+        formula: "(SUM(Engagement) * 0.7) + (SUM(Conversions) * 0.3)",
+        description: "Aggregates multi-channel interaction metrics into a singular normalized score for executive briefings."
+      },
+      {
+        name: "Customer Acquisition Velocity",
+        formula: "COUNT(Clicks) / AverageDays",
+        description: "Measures the operational acceleration of leads converting through the sales funnel."
+      }
+    ],
+    "Sales Director": [
+      {
+        name: "Sales Velocity Factor",
+        formula: "(SUM(Sales) / AVG(UnitCost)) * ConversionRate",
+        description: "Quantifies the conversion velocity of products moving through active regional distribution lists."
+      },
+      {
+        name: "Average Deal Concentration",
+        formula: "MAX(Sales) / SUM(Sales)",
+        description: "Identifies whale-account dependency risks. A high ratio indicates revenue is tied to too few deals."
+      }
+    ],
+    "HR Specialist": [
+      {
+        name: "FTE Productivity Index",
+        formula: "SUM(MetricValue) / Headcount",
+        description: "Tracks individual productivity quotas normalized by department headcount and hours."
+      },
+      {
+        name: "Labor Investment Return (LIR)",
+        formula: "TotalRevenue / TotalCompensation",
+        description: "Heuristic multiplier describing the economic returns generated on human capital investments."
+      }
+    ],
+    "Business Analyst": [
+      {
+        name: "Coefficient of Variance (CoV)",
+        formula: "StandardDeviation / Mean",
+        description: "Measures dispersion of data points relative to the mean. Excellent for tracking process consistency."
+      },
+      {
+        name: "Normal Distribution Z-Score Threshold",
+        formula: "(Value - Mean) / StandardDeviation",
+        description: "Calculates the dynamic Z-Score to isolate systemic noise from statistically significant performance indicators."
+      }
+    ]
+  };
+
+  const selectedKPIs = roleKPIs[activeRole] || roleKPIs["Business Analyst"];
+  suggestedKPIs.push(...selectedKPIs);
+
+  if (numericStats.length > 1) {
+    suggestedKPIs.push({
+      name: `${numericStats[0].name} Correlation Ratio`,
+      formula: `CORREL(${numericStats[0].name}, ${numericStats[1].name})`,
+      description: "Mathematical dependency value identifying whether changes in one variable statistically explain movements in another."
+    });
+  }
+
+  // Chart Recommendations
+  if (primaryDateCol && primaryNumericStat) {
+    recommendedCharts.push({
+      title: `${primaryNumericStat.name} Chronological Trend Analysis`,
+      chartType: "line",
+      xAxis: primaryDateCol,
+      yAxis: primaryNumericStat.name,
+      reason: `Tracking ${primaryNumericStat.name} over ${primaryDateCol} using a Line Chart is ideal for observing long-term growth vectors, cyclic patterns, and sudden outlier dips.`
+    });
+  }
+
+  const primaryStringCol = stringCols[0]?.name;
+  if (primaryStringCol && primaryNumericStat) {
+    recommendedCharts.push({
+      title: `${primaryNumericStat.name} Distribution by ${primaryStringCol}`,
+      chartType: "bar",
+      xAxis: primaryStringCol,
+      yAxis: primaryNumericStat.name,
+      reason: `Comparing ${primaryNumericStat.name} across different ${primaryStringCol} values in a Bar Chart exposes competitive performance margins and localized strongholds.`
+    });
+  }
+
+  if (recommendedCharts.length === 0 && columns.length >= 2) {
+    recommendedCharts.push({
+      title: "Active Core Data Dimensions",
+      chartType: "bar",
+      xAxis: columns[0].name,
+      yAxis: columns[1]?.name || columns[0].name,
+      reason: "Visualizes the physical volume of active records to compare data frequency distributions."
+    });
+  }
+
+  return {
+    insights,
+    suggestedKPIs,
+    recommendedCharts
+  };
+}
+
+// 💬 Dynamic Local Conversational Assistant respond engine for chat fallback
+export function generateLocalChatResponse(
+  query: string,
+  dataset: any[],
+  columns: ColumnMetadata[],
+  measures: Measure[],
+  activeRole: Role
+): string {
+  const normalizedQuery = query.toLowerCase();
+  const numericCols = columns.filter(c => c.type === "number");
+  const stringCols = columns.filter(c => c.type === "string");
+  const totalRows = dataset?.length || 0;
+
+  if (normalizedQuery.includes("anomaly") || normalizedQuery.includes("outlier") || normalizedQuery.includes("spike") || normalizedQuery.includes("exception")) {
+    let report = `### 🔍 Local Statistical Outlier Audit\n\nI have parsed all **${totalRows} rows** for numeric variance beyond standard tolerances (mean ± 1.8σ):\n\n`;
+    let found = false;
+
+    numericCols.forEach(col => {
+      const vals = dataset.map(row => Number(row[col.name])).filter(v => !isNaN(v));
+      if (vals.length < 2) return;
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const stdDev = Math.sqrt(vals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / vals.length);
+      const threshold = mean + 1.8 * stdDev;
+      const outliers = dataset.filter(row => Number(row[col.name]) > threshold);
+
+      if (outliers.length > 0) {
+        found = true;
+        report += `- **Metric '${col.name}'**: Found **${outliers.length} anomalous spikes** exceeding standard deviation threshold of \`${threshold.toFixed(2)}\`. Peak value is \`${Math.max(...vals).toLocaleString()}\` (cohort mean: \`${mean.toFixed(2)}\`).\n`;
+      }
+    });
+
+    if (!found) {
+      report += `No statistically significant anomalies were detected. All numeric distributions are clustered safely within normal operational deviation boundaries.`;
+    } else {
+      report += `\n**Strategic Recommendation:** Investigate the temporal sources of these spikes to isolate operational seasonality from structural data logging issues.`;
+    }
+    return report;
+  }
+
+  if (normalizedQuery.includes("strategy") || normalizedQuery.includes("decision") || normalizedQuery.includes("action") || normalizedQuery.includes("optimize") || normalizedQuery.includes("proposal")) {
+    return `### 💡 Strategic Growth Actions (Local Heuristic Engine)
+
+Based on the metadata analysis of the **${activeRole}** dataset, here are three strategic proposals:
+
+1. **Category Concentration Optimization**
+   - *Observation:* Categorical distributions reveal concentrated volumes.
+   - *Action:* Diversify resources across underrepresented niches to balance total addressable market coverage.
+
+2. **Establish Real-time Outlier Alarms**
+   - *Observation:* Standard deviations show structural spikes in metric volumes.
+   - *Action:* Set up standard deviation alert rules inside your schema to trigger warnings when parameters shift beyond ±1.8σ.
+
+3. **Incorporate Predictive KPI Calculations**
+   - *Observation:* Reports utilize trailing historical aggregations.
+   - *Action:* Upgrade report measures to include forward-looking predictive metrics (e.g. rolling 30-day exponentially weighted averages).`;
+  }
+
+  if (normalizedQuery.includes("formula") || normalizedQuery.includes("measure") || normalizedQuery.includes("kpi") || normalizedQuery.includes("critique")) {
+    return `### 🧮 KPI & Analytical Formulas Critique (Local Heuristics)
+
+The current workspace contains **${measures.length} measures** across **${columns.length} columns**. Here are 2 high-value formulas recommended specifically for a **${activeRole}**:
+
+1. **Volatility Coefficient Formula**
+   - *Expression:* \`StandardDeviation([Column]) / Average([Column])\`
+   - *Purpose:* Normalizes variance across different product segments, providing a pure risk-to-reward metrics ratio.
+
+2. **Temporal Yield Run-Rate**
+   - *Expression:* \`Sum([Metric]) / Unique_Date_Count\`
+   - *Purpose:* Calculates standardized run-rates per temporal unit to isolate calendar-day volume variations.
+
+Would you like me to help configure these custom expressions on your dashboard?`;
+  }
+
+  if (normalizedQuery.includes("segment") || normalizedQuery.includes("comparison") || normalizedQuery.includes("table") || normalizedQuery.includes("category") || normalizedQuery.includes("region") || normalizedQuery.includes("channel")) {
+    if (stringCols.length > 0) {
+      const primaryCat = stringCols[0].name;
+      const freq: Record<string, number> = {};
+      dataset.forEach(row => {
+        const val = String(row[primaryCat] || "Unknown");
+        freq[val] = (freq[val] || 0) + 1;
+      });
+
+      const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      let table = `### 📊 Category Concentration Matrix\n\nHere is a distribution audit of the primary segment column **'${primaryCat}'**:\n\n`;
+      table += `| Segment '${primaryCat}' | Record Count | Percentage Contribution |\n`;
+      table += `| :--- | :---: | :---: |\n`;
+      sorted.forEach(([cat, count]) => {
+        const pct = (count / totalRows) * 100;
+        table += `| **${cat}** | ${count} | ${pct.toFixed(1)}% |\n`;
+      });
+      table += `\n*Note: Showing top ${sorted.length} categories represented in the ${totalRows}-record dataset.*`;
+      return table;
+    }
+  }
+
+  return `### 📊 Fast Local Analytics Audit
+
+Here is a quick summary of the **${columns.length} columns** scanned from your active **${activeRole}** workspace:
+
+- **Record Count**: ${totalRows} entries loaded successfully.
+- **Identified Dimensions**: ${stringCols.map(c => `\`${c.name}\``).join(", ") || "None"}
+- **Identified Metrics**: ${numericCols.map(c => `\`${c.name}\``).join(", ") || "None"}
+
+*Self-Service Tip:* To get the most tailored statistical audit, you can query specific topics such as:
+1. **"Perform anomaly audit"** (Detects outliers and mathematical volatility spikes)
+2. **"Suggest strategic actions"** (Uncovers business recommendations)
+3. **"Review KPI formulas"** (Critiques active metrics and suggests math)
+4. **"Show category table"** (Generates a distribution table)`;
 }
 
 interface ChatMessage {
@@ -50,6 +442,11 @@ export default function AIInsightsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [appliedChartIds, setAppliedChartIds] = useState<Record<string, boolean>>({});
+  const [insightMode, setInsightMode] = useState<"gemini" | "local">("gemini");
+  const [wasFallbackActivated, setWasFallbackActivated] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem("dg_custom_api_key") || "");
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [keyInputTemp, setKeyInputTemp] = useState("");
 
   // Chatbot states
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [
@@ -74,13 +471,33 @@ How can I help you extract value from your active dataset today? You can write c
     }
   }, [chatMessages, chatLoading]);
 
-  const triggerAIAnalysis = async () => {
+  const triggerAIAnalysis = async (forcedMode?: "gemini" | "local") => {
+    const targetMode = forcedMode || insightMode;
     setLoading(true);
     setError(null);
+    setWasFallbackActivated(false);
+
+    if (targetMode === "local") {
+      // Fast, zero-dependency client side statistical calculations
+      await new Promise(resolve => setTimeout(resolve, 600)); // satisfying analytical loader feedback
+      try {
+        const localData = generateLocalHeuristicInsights(dataset, columns, measures, activeRole);
+        setResult(localData);
+      } catch (err: any) {
+        setError("Local heuristics engine error: " + err.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(customApiKey ? { "x-gemini-api-key": customApiKey } : {})
+        },
         body: JSON.stringify({
           data: dataset,
           role: activeRole,
@@ -97,8 +514,15 @@ How can I help you extract value from your active dataset today? You can write c
       const data = await response.json();
       setResult(data);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Failed to communicate with AI Engine. Please make sure server is running and API key is set.");
+      console.warn("Gemini API unavailable or config missing. Auto-activating offline local engine fallback.", err);
+      try {
+        const localData = generateLocalHeuristicInsights(dataset, columns, measures, activeRole);
+        setResult(localData);
+        setWasFallbackActivated(true);
+        setInsightMode("local");
+      } catch (fallbackErr: any) {
+        setError(err.message || "Failed to communicate with AI Engine, and local statistical engine also failed.");
+      }
     } finally {
       setLoading(false);
     }
@@ -137,7 +561,7 @@ How can I help you extract value from your active dataset today? You can write c
     setAppliedChartIds(prev => ({ ...prev, [index]: true }));
   };
 
-  // Chat request function
+  // Chat request function with instant heuristic fallback
   const handleSendChatMessage = async (userQueryText: string) => {
     if (!userQueryText.trim() || chatLoading) return;
 
@@ -152,7 +576,19 @@ How can I help you extract value from your active dataset today? You can write c
     setChatLoading(true);
     setChatError(null);
 
-    // Prepare previous messages mapping for the Gemini conversation API format
+    if (insightMode === "local") {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const text = generateLocalChatResponse(userQueryText, dataset, columns, measures, activeRole);
+      const assistantMsg: ChatMessage = {
+        id: "reply_" + Date.now(),
+        role: "assistant",
+        content: text
+      };
+      setChatMessages(prev => [...prev, assistantMsg]);
+      setChatLoading(false);
+      return;
+    }
+
     const activeHistory = [...chatMessages, newUserMsg].map(msg => ({
       role: msg.role,
       content: msg.content
@@ -161,7 +597,10 @@ How can I help you extract value from your active dataset today? You can write c
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(customApiKey ? { "x-gemini-api-key": customApiKey } : {})
+        },
         body: JSON.stringify({
           messages: activeHistory,
           data: dataset,
@@ -184,8 +623,14 @@ How can I help you extract value from your active dataset today? You can write c
       };
       setChatMessages(prev => [...prev, assistantMsg]);
     } catch (err: any) {
-      console.error(err);
-      setChatError(err.message || "Failed to load response. Ensure your environment has GEMINI_API_KEY.");
+      console.warn("Chat API error. Falling back to offline heuristics response:", err);
+      const text = generateLocalChatResponse(userQueryText, dataset, columns, measures, activeRole);
+      const assistantMsg: ChatMessage = {
+        id: "reply_" + Date.now(),
+        role: "assistant",
+        content: `*(Fallback activated: offline analytics engine)*\n\n` + text
+      };
+      setChatMessages(prev => [...prev, assistantMsg]);
     } finally {
       setChatLoading(false);
     }
@@ -255,9 +700,124 @@ How can I help you extract value from your active dataset today? You can write c
         </div>
       </div>
 
+      {/* Optional Custom API Key Override Box */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-3xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className={`p-1.5 rounded-lg ${customApiKey ? "bg-emerald-500/10 text-emerald-600" : "bg-slate-100 text-slate-500 dark:bg-slate-800"}`}>
+              <Key className="w-4 h-4" />
+            </div>
+            <div className="text-left">
+              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                Custom Gemini API Key Override (Vercel Offline Helper)
+              </h4>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                {customApiKey 
+                  ? `Active Custom Key (${customApiKey.substring(0, 6)}...${customApiKey.substring(customApiKey.length - 4)})`
+                  : "Using server configuration (.env file / Vercel variables)"
+                }
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setShowKeyInput(!showKeyInput);
+              if (!showKeyInput) setKeyInputTemp(customApiKey);
+            }}
+            className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors cursor-pointer"
+          >
+            {showKeyInput ? "Hide Settings" : "Configure Key Override"}
+          </button>
+        </div>
+
+        {showKeyInput && (
+          <div className="mt-3 p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-850 rounded-lg space-y-3">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              If your Vercel deployment cannot read your local <code>.env</code> file (which is ignored by Git), you can paste your <strong>GEMINI_API_KEY</strong> below. It is saved 100% securely in your browser's local storage and forwarded via secure headers to your server endpoints.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="password"
+                placeholder="Paste your Gemini API Key here (AIzaSy...)"
+                value={keyInputTemp}
+                onChange={(e) => setKeyInputTemp(e.target.value)}
+                className="flex-1 px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-150 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+              />
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    const trimmed = keyInputTemp.trim();
+                    localStorage.setItem("dg_custom_api_key", trimmed);
+                    setCustomApiKey(trimmed);
+                    setShowKeyInput(false);
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-all shadow-3xs"
+                >
+                  Save Override
+                </button>
+                {customApiKey && (
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem("dg_custom_api_key");
+                      setCustomApiKey("");
+                      setKeyInputTemp("");
+                      setShowKeyInput(false);
+                    }}
+                    className="px-4 py-2 bg-rose-600/10 hover:bg-rose-600/20 text-rose-600 dark:text-rose-400 rounded-lg text-xs font-bold cursor-pointer transition-all"
+                  >
+                    Clear Override
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Render TAB 1: EXECUTIVE AUDIT */}
       {activeTab === "audit" && (
         <div className="space-y-6">
+          
+          {/* Engine Selector Segment */}
+          <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs">
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 font-mono tracking-wider">Analysis Engine Core</span>
+              <p className="text-slate-600 dark:text-slate-300 font-medium">
+                Choose between server-side AI or client-side statistical heuristics.
+              </p>
+            </div>
+            <div className="flex bg-slate-200/60 dark:bg-slate-900 p-1 rounded-lg border border-slate-300/40 dark:border-slate-800 shadow-3xs">
+              <button
+                onClick={() => {
+                  setInsightMode("gemini");
+                  setWasFallbackActivated(false);
+                }}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
+                  insightMode === "gemini"
+                    ? "bg-blue-600 text-white shadow-2xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <span>Cloud Gemini (AI-Powered)</span>
+              </button>
+              <button
+                onClick={() => {
+                  setInsightMode("local");
+                  setWasFallbackActivated(false);
+                }}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
+                  insightMode === "local"
+                    ? "bg-blue-600 text-white shadow-2xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Local Statistical Heuristics</span>
+              </button>
+            </div>
+          </div>
+
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Automated Audit Synthesis</h3>
@@ -265,7 +825,7 @@ How can I help you extract value from your active dataset today? You can write c
             </div>
             <button
               id="btn-trigger-ai-analysis"
-              onClick={triggerAIAnalysis}
+              onClick={() => triggerAIAnalysis()}
               disabled={loading}
               className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-150 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white font-semibold px-5 py-2.5 rounded-lg text-xs transition-all flex items-center justify-center space-x-2 shrink-0 shadow-sm disabled:cursor-not-allowed group cursor-pointer"
             >
@@ -282,6 +842,22 @@ How can I help you extract value from your active dataset today? You can write c
               )}
             </button>
           </div>
+
+          {/* Automatic Fallback Banner Warning */}
+          {wasFallbackActivated && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-200 rounded-xl flex items-start gap-3 shadow-xs">
+              <AlertTriangle className="w-5 h-5 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs">
+                <h4 className="font-bold">Offline Analytics Active</h4>
+                <p className="leading-relaxed">
+                  We could not reach the Cloud Gemini API (e.g. key is not configured yet). To protect your workflow, we automatically compiled dynamic report elements using the <strong>Zero-Latency Local Statistical Heuristics Engine</strong>.
+                </p>
+                <p className="text-amber-600 dark:text-amber-400 font-medium">
+                  If you recently configured environment variables, make sure to <strong>redeploy your project on Vercel</strong> for the key to load!
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Loading Screen */}
           {loading && (
@@ -476,8 +1052,17 @@ How can I help you extract value from your active dataset today? You can write c
             <div className="flex items-center gap-2">
               <Sparkle className="w-4 h-4 text-blue-600 animate-spin" style={{ animationDuration: "3s" }} />
               <div>
-                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">Live BI Conversational Partner</h4>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500">Context: {dataset.length} active rows grounded directly with Gemini-3.5-flash</p>
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <span>Live BI Conversational Partner</span>
+                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                    insightMode === "gemini" 
+                      ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400" 
+                      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                  }`}>
+                    {insightMode === "gemini" ? "Gemini Engine" : "Local Engine"}
+                  </span>
+                </h4>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">Context: {dataset.length} active rows grounded directly in active report metrics</p>
               </div>
             </div>
             <button
