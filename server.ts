@@ -224,7 +224,20 @@ app.post("/api/analyze", async (req, res) => {
     res.json(parsedResult);
   } catch (error: any) {
     console.error("Analysis route error:", error);
-    res.status(500).json({ error: error.message || "An error occurred during data analysis." });
+    let message = error.message || "An error occurred during data analysis.";
+    try {
+      if (typeof message === "string" && message.includes("API key not valid")) {
+        message = "API key not valid. Please pass a valid Gemini API key.";
+      } else if (typeof message === "string" && message.startsWith("{")) {
+        const parsed = JSON.parse(message);
+        if (parsed?.error?.message) {
+          message = parsed.error.message;
+        }
+      }
+    } catch (e) {
+      // ignore parsing fallback
+    }
+    res.status(500).json({ error: message });
   }
 });
 
@@ -285,7 +298,20 @@ app.post("/api/chat", async (req, res) => {
     res.json({ text: response.text || "No response received from Gemini." });
   } catch (error: any) {
     console.error("Chat route error:", error);
-    res.status(500).json({ error: error.message || "An error occurred during AI chat." });
+    let message = error.message || "An error occurred during AI chat.";
+    try {
+      if (typeof message === "string" && message.includes("API key not valid")) {
+        message = "API key not valid. Please pass a valid Gemini API key.";
+      } else if (typeof message === "string" && message.startsWith("{")) {
+        const parsed = JSON.parse(message);
+        if (parsed?.error?.message) {
+          message = parsed.error.message;
+        }
+      }
+    } catch (e) {
+      // ignore parsing fallback
+    }
+    res.status(500).json({ error: message });
   }
 });
 

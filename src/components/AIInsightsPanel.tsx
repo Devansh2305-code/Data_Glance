@@ -471,8 +471,9 @@ How can I help you extract value from your active dataset today? You can write c
     }
   }, [chatMessages, chatLoading]);
 
-  const triggerAIAnalysis = async (forcedMode?: "gemini" | "local") => {
+  const triggerAIAnalysis = async (forcedMode?: "gemini" | "local", overrideKey?: string) => {
     const targetMode = forcedMode || insightMode;
+    const activeKey = overrideKey !== undefined ? overrideKey : customApiKey;
     setLoading(true);
     setError(null);
     setWasFallbackActivated(false);
@@ -496,7 +497,7 @@ How can I help you extract value from your active dataset today? You can write c
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          ...(customApiKey ? { "x-gemini-api-key": customApiKey } : {})
+          ...(activeKey ? { "x-gemini-api-key": activeKey } : {})
         },
         body: JSON.stringify({
           data: dataset,
@@ -738,6 +739,7 @@ How can I help you extract value from your active dataset today? You can write c
                     localStorage.setItem("dg_custom_api_key", trimmed);
                     setCustomApiKey(trimmed);
                     setShowKeyInput(false);
+                    triggerAIAnalysis("gemini", trimmed);
                   }}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-all shadow-3xs"
                 >
@@ -750,6 +752,7 @@ How can I help you extract value from your active dataset today? You can write c
                       setCustomApiKey("");
                       setKeyInputTemp("");
                       setShowKeyInput(false);
+                      triggerAIAnalysis("gemini", "");
                     }}
                     className="px-4 py-2 bg-rose-600/10 hover:bg-rose-600/20 text-rose-600 dark:text-rose-400 rounded-lg text-xs font-bold cursor-pointer transition-all"
                   >
