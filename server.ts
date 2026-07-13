@@ -18,10 +18,13 @@ function getGenAIClient(): GoogleGenAI {
     }
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  let apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not defined. Please make sure you have added your GEMINI_API_KEY inside the Secrets panel.");
   }
+
+  // Trim whitespace and strip any enclosing double/single quotes
+  apiKey = apiKey.trim().replace(/^["']|["']$/g, "");
 
   return new GoogleGenAI({
     apiKey: apiKey,
@@ -34,6 +37,66 @@ function getGenAIClient(): GoogleGenAI {
 }
 
 app.use(express.json({ limit: "10mb" }));
+
+// API Endpoint for diagnosing and debugging setup on Vercel/Production
+app.get("/api/debug", async (req, res) => {
+  try {
+    const rawKey = process.env.GEMINI_API_KEY;
+    const hasKey = !!rawKey;
+    const keyLen = rawKey ? rawKey.length : 0;
+    const firstChars = rawKey ? rawKey.substring(0, 6) : "";
+    const lastChars = rawKey ? rawKey.substring(Math.max(0, keyLen - 6)) : "";
+    const hasQuotes = rawKey ? (rawKey.startsWith('"') && rawKey.endsWith('"')) || (rawKey.startsWith("'") && rawKey.endsWith("'")) : false;
+
+    let cleanedKey = rawKey;
+    if (cleanedKey) {
+      cleanedKey = cleanedKey.trim().replace(/^["']|["']$/g, "");
+    }
+
+    let geminiTestResult = "Not attempted";
+    let geminiError = null;
+
+    if (cleanedKey) {
+      try {
+        const testAi = new GoogleGenAI({ apiKey: cleanedKey });
+        const testResponse = await testAi.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: "Hello from Dataglance diagnostics!",
+        });
+        geminiTestResult = testResponse.text || "Empty response text";
+      } catch (err: any) {
+        geminiError = {
+          name: err.name,
+          message: err.message,
+          stack: err.stack,
+          status: err.status,
+          errorDetails: err.errorDetails || err.details || null
+        };
+      }
+    }
+
+    res.json({
+      env: {
+        NODE_ENV: process.env.NODE_ENV,
+        VERCEL: process.env.VERCEL,
+        hasKey,
+        keyLen,
+        firstChars,
+        lastChars,
+        hasQuotes,
+        nodeVersion: process.version
+      },
+      geminiTestResult,
+      geminiError
+    });
+  } catch (globalErr: any) {
+    res.status(500).json({
+      error: "Global debug endpoint crash",
+      message: globalErr.message,
+      stack: globalErr.stack
+    });
+  }
+});
 
 // API Endpoint for AI-driven BI Insights
 app.post("/api/analyze", async (req, res) => {
