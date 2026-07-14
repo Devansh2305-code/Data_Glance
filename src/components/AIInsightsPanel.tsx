@@ -5,6 +5,8 @@ import {
   AlertCircle, 
   Loader2, 
   TrendingUp, 
+  TrendingDown,
+  Lightbulb,
   AlertTriangle,
   Plus,
   Compass,
@@ -63,7 +65,10 @@ export function generateLocalHeuristicInsights(
           title: "Insufficient Data Volume",
           description: "The active dataset is currently empty. Please upload or paste records to generate statistical insights.",
           impact: "high",
-          metricAffected: "Row Count"
+          metricAffected: "Row Count",
+          decreaseDetected: false,
+          rootCause: "The analysis engine was triggered without any active rows in the database.",
+          resolution: "Please upload a CSV or paste JSON data to seed the spreadsheet database and run the audit."
         }
       ],
       suggestedKPIs: [
@@ -111,7 +116,10 @@ export function generateLocalHeuristicInsights(
         title: `Outliers and Volatility Detected in ${stat.name}`,
         description: `We detected ${outliers.length} records that significantly exceed normal variance thresholds (exceeding standard deviation threshold of ${threshold.toFixed(1)}). The peak value recorded is ${stat.max.toLocaleString()} compared to the cohort average of ${stat.mean.toFixed(1)}.`,
         impact: stat.stdDev / stat.mean > 0.4 ? "high" : "medium",
-        metricAffected: stat.name
+        metricAffected: stat.name,
+        decreaseDetected: false,
+        rootCause: "Extreme values or unique operational events are introducing strong mathematical variance, which shifts standard averages.",
+        resolution: "To resolve mathematical skewing, implement robust data sanitization or segment these extreme outlier cases into a dedicated executive report."
       });
     }
   });
@@ -142,7 +150,14 @@ export function generateLocalHeuristicInsights(
           title: `Temporal Trend ${trendDirection}: ${primaryNumericStat.name}`,
           description: `Chronological analysis shows that the average ${primaryNumericStat.name} moved from ${firstAvg.toFixed(1)} in the first half of the dataset to ${secondAvg.toFixed(1)} in the second half. This constitutes a ${Math.abs(pctChange).toFixed(1)}% temporal ${pctChange > 0 ? "growth surge" : "downward adjustment"}.`,
           impact: Math.abs(pctChange) > 15 ? "high" : "medium",
-          metricAffected: primaryNumericStat.name
+          metricAffected: primaryNumericStat.name,
+          decreaseDetected: pctChange < 0,
+          rootCause: pctChange < 0
+            ? "The chronological decrease points to a structural downswing in the latter half of the records, potentially due to seasonal trends, customer drop-offs, or marketing run-down."
+            : "Positive momentum is observed over time, showing progressive expansion in metric averages across the chronological cohort.",
+          resolution: pctChange < 0
+            ? "Address this chronological contraction immediately by conducting a re-engagement campaign, optimizing pricing or resource allocation, and auditing low-performing cohorts."
+            : "Document the key contributors to this expansion and replicate these process adjustments across other operations segments to capitalize on the momentum."
         });
       }
     } catch (e) {
@@ -168,7 +183,10 @@ export function generateLocalHeuristicInsights(
           title: `Dominant Segment Concentration in '${col.name}'`,
           description: `The categorical segment "${topCat}" accounts for ${pct.toFixed(1)}% of all entries (${count} out of ${dataset.length} records). This signals a strong structural concentration which might expose the report to category-specific biases.`,
           impact: pct > 55 ? "high" : "medium",
-          metricAffected: col.name
+          metricAffected: col.name,
+          decreaseDetected: false,
+          rootCause: "Over-reliance or customer preference skew towards a single category exposes the system to high structural bias.",
+          resolution: "De-risk segment dependency by aggressively targeting underrepresented categories, optimizing cross-segment campaigns, or introducing dedicated incentives."
         });
       }
     }
@@ -180,7 +198,10 @@ export function generateLocalHeuristicInsights(
       title: "Stable Operational Metrics",
       description: `Analysis of your ${dataset.length} active data rows shows uniform distribution. Standard metrics are within normal control limits without extreme outliers or anomalies detected.`,
       impact: "low",
-      metricAffected: "Core Cohort"
+      metricAffected: "Core Cohort",
+      decreaseDetected: false,
+      rootCause: "Uniform distribution of metric values indicates quiet operational margins and absence of high volatility.",
+      resolution: "Introduce dynamic experiments, incentive changes, or product bundles to break the plateau and trigger high-yield growth patterns."
     });
   }
 
@@ -516,7 +537,11 @@ How can I help you extract value from your active dataset today? You can write c
       setResult(data);
     } catch (err: any) {
       console.error("Gemini API error:", err);
-      setError(err.message || "Failed to communicate with Gemini AI Engine.");
+      let errMsg = err.message || "Failed to communicate with Gemini AI Engine.";
+      if (errMsg.includes("Failed to fetch")) {
+        errMsg = "Failed to fetch (Network connection error: the back-end API at /api/analyze is unreachable. If you are running locally, make sure your backend server is running on port 3000 via 'npm run dev' instead of running 'vite' directly. If you are on Vercel, verify your Serverless Functions deployment is complete and your API key is configured in settings.)";
+      }
+      setError(errMsg);
       setResult(null);
     } finally {
       setLoading(false);
@@ -619,7 +644,11 @@ How can I help you extract value from your active dataset today? You can write c
       setChatMessages(prev => [...prev, assistantMsg]);
     } catch (err: any) {
       console.error("Chat API error:", err);
-      setChatError(err.message || "Failed to communicate with Gemini AI Chat.");
+      let errMsg = err.message || "Failed to communicate with Gemini AI Chat.";
+      if (errMsg.includes("Failed to fetch")) {
+        errMsg = "Failed to fetch (Network connection error: the back-end API at /api/chat is unreachable. If you are running locally, make sure your backend server is running on port 3000 via 'npm run dev'. If on Vercel, verify your Serverless Functions deployment is complete.)";
+      }
+      setChatError(errMsg);
     } finally {
       setChatLoading(false);
     }
@@ -886,43 +915,89 @@ How can I help you extract value from your active dataset today? You can write c
                   {result.insights.map((insight, idx) => {
                     const isHigh = insight.impact === "high";
                     const isMed = insight.impact === "medium";
+                    const isDecrease = !!insight.decreaseDetected;
                     return (
                       <div
                         key={idx}
                         className={`p-5 rounded-xl border shadow-sm flex items-start gap-4 transition-all hover:shadow-md ${
                           isHigh 
-                            ? "narrative-card-high" 
+                            ? "narrative-card-high border-rose-100 dark:border-rose-950/50 bg-rose-50/10 dark:bg-rose-950/5" 
                             : isMed 
-                            ? "narrative-card-med" 
-                            : "narrative-card-low"
+                            ? "narrative-card-med border-amber-100 dark:border-amber-950/50 bg-amber-50/10 dark:bg-amber-950/5" 
+                            : "narrative-card-low border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
                         }`}
                       >
                         <div className={`p-2.5 rounded-xl shrink-0 ${
-                          isHigh 
+                          isDecrease
+                            ? "bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400"
+                            : isHigh 
                             ? "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400" 
                             : isMed 
                             ? "bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400" 
                             : "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                         }`}>
-                          <AlertTriangle className="w-5 h-5" />
+                          {isDecrease ? (
+                            <TrendingDown className="w-5 h-5 animate-pulse" />
+                          ) : (
+                            <AlertTriangle className="w-5 h-5" />
+                          )}
                         </div>
                         
-                        <div className="space-y-1.5 flex-1">
-                          <div className="flex items-center justify-between gap-3">
-                            <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight">{insight.title}</h4>
-                            <span className={`text-[10px] font-mono tracking-wider uppercase font-bold px-2 py-0.5 rounded ${
-                              isHigh 
-                                ? "bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300" 
-                                : isMed 
-                                ? "bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300" 
-                                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                            }`}>
-                              {insight.impact} impact
-                            </span>
+                        <div className="space-y-2 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2.5">
+                            <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight">
+                              {insight.title}
+                            </h4>
+                            <div className="flex items-center gap-1.5">
+                              {isDecrease && (
+                                <span className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                                  <TrendingDown className="w-3 h-3" />
+                                  <span>Decline Detected</span>
+                                </span>
+                              )}
+                              <span className={`text-[10px] font-mono tracking-wider uppercase font-bold px-2 py-0.5 rounded ${
+                                isHigh 
+                                  ? "bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300" 
+                                  : isMed 
+                                  ? "bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300" 
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                              }`}>
+                                {insight.impact} impact
+                              </span>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{insight.description}</p>
                           
-                          <div className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-1 pt-1.5 border-t border-slate-50 dark:border-slate-800/80">
+                          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                            {insight.description}
+                          </p>
+
+                          {/* Root Cause Section */}
+                          {insight.rootCause && (
+                            <div className="p-3 bg-slate-50 dark:bg-slate-950/40 rounded-lg border border-slate-100 dark:border-slate-850 space-y-1">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                                <HelpCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span>Why is it so? (Root Cause Analysis)</span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
+                                {insight.rootCause}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Resolution/Action Section */}
+                          {insight.resolution && (
+                            <div className="p-3 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-lg border border-emerald-500/10 space-y-1">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-400">
+                                <Lightbulb className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                <span>How can it be resolved? (Action Plan)</span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
+                                {insight.resolution}
+                              </p>
+                            </div>
+                          )}
+                          
+                          <div className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 font-mono pt-1.5 border-t border-slate-50 dark:border-slate-800/80">
                             <span>Metric Scope:</span>
                             <span className="font-semibold text-slate-600 dark:text-slate-300">{insight.metricAffected}</span>
                           </div>

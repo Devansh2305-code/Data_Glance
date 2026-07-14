@@ -42,6 +42,9 @@ export interface AIInsight {
   description: string;
   impact: "high" | "medium" | "low";
   metricAffected: string;
+  decreaseDetected?: boolean;
+  rootCause?: string;
+  resolution?: string;
 }
 
 export interface AISuggestedKPI {

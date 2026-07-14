@@ -135,7 +135,11 @@ app.post("/api/analyze", async (req, res) => {
       Here is a sample of ${sampleSize} rows from the dataset:
       ${JSON.stringify(dataSample, null, 2)}
       
-      Please perform deep analytical inspection. Identify trends, anomalies, performance metrics, and actionable ideas.
+      Please perform deep analytical inspection. Specially focus on identifying:
+      1. Any decreases, drops, underperformance, downward trends, or negative anomalies.
+      2. If a decrease or negative trend/underperformance is found, set "decreaseDetected" to true, explain EXACTLY why it is happening (rootCause analysis), and suggest precise actionable solutions (how can it be resolved).
+      3. Even if a major decrease is not explicitly found, analyze performance bottlenecks, cost challenges, operational risks, or growth barriers, and provide a clear "rootCause" (explaining the drivers) and "resolution" (actionable strategy) for every single insight.
+      
       Provide a highly professional and structured JSON response that complies EXACTLY with this JSON Schema:
       
       {
@@ -144,7 +148,10 @@ app.post("/api/analyze", async (req, res) => {
             "title": "Short descriptive title of the insight",
             "description": "Deep analytical description containing numeric details, percentages, and trends. Focus on what this means for a ${role}.",
             "impact": "high" | "medium" | "low",
-            "metricAffected": "The KPI or column this insight touches (e.g. ROAS, Revenue, Churn)"
+            "metricAffected": "The KPI or column this insight touches (e.g. ROAS, Revenue, Churn)",
+            "decreaseDetected": true,
+            "rootCause": "Deep business context explaining: Why is this value declining or behaving this way? Identify internal or external triggers, drivers, or correlations in the data.",
+            "resolution": "Actionable, precise business recommendations explaining: How can this decline/challenge be resolved? Provide practical tactics, operational improvements, or strategies."
           }
         ],
         "suggestedKPIs": [
@@ -179,12 +186,15 @@ app.post("/api/analyze", async (req, res) => {
               type: Type.ARRAY,
               items: {
                 type: Type.OBJECT,
-                required: ["title", "description", "impact", "metricAffected"],
+                required: ["title", "description", "impact", "metricAffected", "decreaseDetected", "rootCause", "resolution"],
                 properties: {
                   title: { type: Type.STRING },
                   description: { type: Type.STRING },
                   impact: { type: Type.STRING, enum: ["high", "medium", "low"] },
-                  metricAffected: { type: Type.STRING }
+                  metricAffected: { type: Type.STRING },
+                  decreaseDetected: { type: Type.BOOLEAN },
+                  rootCause: { type: Type.STRING },
+                  resolution: { type: Type.STRING }
                 }
               }
             },
