@@ -34,7 +34,9 @@ import {
   Shield,
   LogOut,
   PieChart,
-  Loader
+  Loader,
+  X,
+  Sparkles
 } from "lucide-react";
 
 const getDefaultWidgets = (role: Role, availableMeasures: Measure[]): Widget[] => {
@@ -341,6 +343,7 @@ export default function App() {
 
   const [aiAnalysisResult, setAiAnalysisResult] = useState<AIAnalysisResult | null>(null);
 
+  const [aiCleanMessage, setAiCleanMessage] = useState<string | null>(null);
   const isFirstMount = useRef(true);
 
   useEffect(() => {
@@ -483,7 +486,7 @@ export default function App() {
     setWidgets(getDefaultWidgets(activeRole, template.measures));
   }, [activeRole, isCustomDataset, dataset.length, columns.length]);
 
-  const handleImportCustomData = (importedData: any[], importedColumns: ColumnMetadata[]) => {
+  const handleImportCustomData = (importedData: any[], importedColumns: ColumnMetadata[], cleanSummary?: string | null) => {
     setDataset(importedData);
     setColumns(importedColumns);
     setIsCustomDataset(true);
@@ -560,6 +563,12 @@ export default function App() {
 
     setWidgets(freshWidgets);
     setView("report");
+    if (cleanSummary) {
+      setAiCleanMessage(cleanSummary);
+      setTimeout(() => {
+        setAiCleanMessage(null);
+      }, 7000);
+    }
   };
 
   const handleAddMeasure = (newMeasure: Measure) => {
@@ -864,6 +873,27 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* AI Data Cleaning Toast Notification */}
+      {aiCleanMessage && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-900/95 dark:bg-slate-950/98 backdrop-blur-md border border-blue-500/30 rounded-xl shadow-2xl p-4 flex gap-3 text-slate-100 animate-slideIn">
+          <div className="p-2 bg-blue-600/20 border border-blue-500/30 rounded-lg text-blue-400 shrink-0 h-fit">
+            <Sparkles className="w-4.5 h-4.5 text-blue-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-start">
+              <span className="text-xs font-bold text-white uppercase tracking-wider">AI Quality Cleaned</span>
+              <button 
+                onClick={() => setAiCleanMessage(null)}
+                className="text-slate-500 hover:text-white transition cursor-pointer p-0.5 rounded"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed mt-1">{aiCleanMessage}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

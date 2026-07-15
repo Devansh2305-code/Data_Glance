@@ -14,7 +14,7 @@ import { Role, ColumnMetadata } from "../types";
 
 interface RawDataImporterProps {
   activeRole: Role;
-  onImport: (data: any[], columns: ColumnMetadata[]) => void;
+  onImport: (data: any[], columns: ColumnMetadata[], cleanSummary?: string | null) => void;
   currentDataLength: number;
 }
 
@@ -28,6 +28,119 @@ export default function RawDataImporter({
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCleaning, setIsCleaning] = useState(false);
+
+  const applyCleaningBlueprint = (data: any[], recipe: any): { data: any[], columns: ColumnMetadata[] } => {
+    const renamedColumns = recipe.renamedColumns || {};
+    const transformations = recipe.transformations || [];
+    const columnTypes = recipe.columnTypes || {};
+
+    const cleanedData = data.map((row) => {
+      const cleanedRow: any = {};
+      
+      // Copy and rename keys
+      Object.keys(row).forEach((oldKey) => {
+        const newKey = renamedColumns[oldKey] || oldKey;
+        cleanedRow[newKey] = row[oldKey];
+      });
+
+      // Run value transformations
+      transformations.forEach((trans: any) => {
+        const origCol = trans.column;
+        const activeCol = renamedColumns[origCol] || origCol;
+        const val = cleanedRow[activeCol];
+
+        if (val !== undefined && val !== null) {
+          if (trans.action === "parse_number") {
+            const strVal = String(val).trim();
+            if (strVal === "") {
+              cleanedRow[activeCol] = null;
+            } else {
+              // Remove everything except digits, minus sign, and dot
+              const cleanedStr = strVal.replace(/[^\d.-]/g, "");
+              const parsed = parseFloat(cleanedStr);
+              cleanedRow[activeCol] = isNaN(parsed) ? null : parsed;
+            }
+          } else if (trans.action === "standardize_date") {
+            const strVal = String(val).trim();
+            if (strVal === "") {
+              cleanedRow[activeCol] = null;
+            } else {
+              const parsedDate = new Date(strVal);
+              if (!isNaN(parsedDate.getTime())) {
+                cleanedRow[activeCol] = parsedDate.toISOString().split("T")[0];
+              } else {
+                cleanedRow[activeCol] = strVal;
+              }
+            }
+          } else if (trans.action === "trim_and_case") {
+            let strVal = String(val).trim();
+            if (trans.case === "upper") {
+              strVal = strVal.toUpperCase();
+            } else if (trans.case === "lower") {
+              strVal = strVal.toLowerCase();
+            } else if (trans.case === "title") {
+              strVal = strVal.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+            }
+            cleanedRow[activeCol] = strVal;
+          }
+        }
+      });
+
+      return cleanedRow;
+    });
+
+    const newColumns: ColumnMetadata[] = Object.keys(columnTypes).map((colName) => ({
+      name: colName,
+      type: columnTypes[colName] as "number" | "string" | "date"
+    }));
+
+    if (newColumns.length === 0 && cleanedData.length > 0) {
+      const headers = Object.keys(cleanedData[0]);
+      headers.forEach(h => {
+        newColumns.push({ name: h, type: typeof cleanedData[0][h] === "number" ? "number" : "string" });
+      });
+    }
+
+    return { data: cleanedData, columns: newColumns };
+  };
+
+  const handleProcessImport = async (rawData: any[], rawColumns: ColumnMetadata[]) => {
+    setError(null);
+    setIsCleaning(true);
+    
+    try {
+      const response = await fetch("/api/clean", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": localStorage.getItem("gemini-api-key") || ""
+        },
+        body: JSON.stringify({
+          data: rawData,
+          columns: rawColumns
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("AI cleaning endpoint returned an error status.");
+      }
+
+      const recipe = await response.json();
+      
+      if (recipe.isMessy) {
+        const { data: cleanedData, columns: cleanedColumns } = applyCleaningBlueprint(rawData, recipe);
+        onImport(cleanedData, cleanedColumns, recipe.cleanSummary);
+      } else {
+        onImport(rawData, rawColumns, null);
+      }
+    } catch (e: any) {
+      console.warn("AI cleaning failed, importing raw data:", e);
+      onImport(rawData, rawColumns, null);
+    } finally {
+      setIsCleaning(false);
+    }
+  };
 
 
   // Parse pasted raw CSV content
@@ -43,7 +156,7 @@ export default function RawDataImporter({
         setError("Could not parse any rows. Check your CSV formatting.");
         return;
       }
-      onImport(result.data, result.columns);
+      handleProcessImport(result.data, result.columns);
     } catch (e: any) {
       setError(`Parsing failed: ${e.message}`);
     }
@@ -72,7 +185,7 @@ export default function RawDataImporter({
               setError("The uploaded Excel file is empty or contains no valid sheets.");
               return;
             }
-            onImport(result.data, result.columns);
+            handleProcessImport(result.data, result.columns);
           } catch (err: any) {
             setError(`Error reading Excel: ${err.message}`);
           }
@@ -89,7 +202,7 @@ export default function RawDataImporter({
               setError("The uploaded CSV file is empty or corrupted.");
               return;
             }
-            onImport(result.data, result.columns);
+            handleProcessImport(result.data, result.columns);
           } catch (err: any) {
             setError(`Error reading CSV: ${err.message}`);
           }
@@ -125,7 +238,22 @@ export default function RawDataImporter({
   };
 
   return (
-    <div id="data-importer-container" className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 max-w-3xl mx-auto my-6">
+    <>
+      {isCleaning && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl flex flex-col items-center">
+            <div className="p-3.5 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded-full mb-5 border border-blue-100 dark:border-blue-900/20 animate-pulse">
+              <RefreshCw className="w-8 h-8 animate-spin animate-infinite duration-2000" />
+            </div>
+            <h3 className="font-extrabold text-slate-800 dark:text-white text-lg">AI Inspecting Data Quality</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2.5 leading-relaxed">
+              Gemini is auditing column headers, data formats, category casings, and currency representations to clean your records for analytics...
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div id="data-importer-container" className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 max-w-3xl mx-auto my-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-xl font-bold text-slate-800 tracking-tight">Load Your Data Engine</h2>
@@ -236,5 +364,6 @@ export default function RawDataImporter({
         </div>
       )}
     </div>
+  </>
   );
 }
