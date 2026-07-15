@@ -491,8 +491,6 @@ How can I help you extract value from your active dataset today? You can write c
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages, chatLoading]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [activeRole, dataset.length]);
   const triggerAIAnalysis = async (forcedMode?: "gemini" | "local", overrideKey?: string) => {
     const targetMode = forcedMode || insightMode;
     const activeKey = overrideKey !== undefined ? overrideKey : customApiKey;
