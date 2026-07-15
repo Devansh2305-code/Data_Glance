@@ -25,8 +25,10 @@ import { Role } from "../types";
 import { 
   auth, 
   googleProvider, 
-  hasFirebaseConfig 
+  hasFirebaseConfig,
+  db
 } from "../firebase";
+import { doc, getDoc } from "firebase/firestore";
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -88,14 +90,33 @@ export default function LandingPage({ onMockLogin }: LandingPageProps) {
 
     // Secure Admin Intercept Check
     if (email === "admin@dataglance.com" || authTab === "admin") {
-      const activeAdminPassword = localStorage.getItem("bi-admin-password") || "admin123";
-      if (email !== "admin@dataglance.com" || password !== activeAdminPassword) {
-        setError("Invalid administrative credentials.");
-        return;
-      }
-      
       setIsLoading(true);
-      setTimeout(() => {
+      
+      const checkPasscode = async () => {
+        let activeAdminPassword = "admin123";
+        
+        if (db) {
+          try {
+            const configSnap = await getDoc(doc(db, "system", "config"));
+            if (configSnap.exists()) {
+              const data = configSnap.data();
+              if (data.adminPassword) {
+                activeAdminPassword = data.adminPassword;
+              }
+            }
+          } catch (e) {
+            console.warn("Could not retrieve admin password from Firestore:", e);
+          }
+        } else {
+          activeAdminPassword = localStorage.getItem("bi-admin-password") || "admin123";
+        }
+        
+        if (email !== "admin@dataglance.com" || password !== activeAdminPassword) {
+          setError("Invalid administrative credentials.");
+          setIsLoading(false);
+          return;
+        }
+        
         setIsLoading(false);
         localStorage.setItem("admin-key", "dg-admin-session-active");
         
@@ -109,7 +130,9 @@ export default function LandingPage({ onMockLogin }: LandingPageProps) {
         setTimeout(() => {
           handleCloseModal();
         }, 1000);
-      }, 1200);
+      };
+      
+      checkPasscode();
       return;
     }
 

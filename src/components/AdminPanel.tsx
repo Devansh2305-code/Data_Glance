@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { UserPlan, AdminAnalytics, SystemConfiguration, AuditLog, PlanType } from "../types";
 import { db } from "../firebase";
-import { collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from "firebase/firestore";
 import {
   Users,
   Settings,
@@ -67,8 +67,7 @@ const AdminPanel: React.FC = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const stored = localStorage.getItem("bi-global-users");
-      let list: UserPlan[] = stored ? JSON.parse(stored) : [];
+      let list: UserPlan[] = [];
 
       if (db) {
         try {
@@ -92,23 +91,20 @@ const AdminPanel: React.FC = () => {
               }
             } as any);
           });
-
-          if (firestoreUsers.length > 0) {
-            const mergedList = [...firestoreUsers];
-            list.forEach(lu => {
-              if (!mergedList.some(fu => fu.userId === lu.userId)) {
-                mergedList.push(lu);
-              }
-            });
-            list = mergedList;
-            localStorage.setItem("bi-global-users", JSON.stringify(list));
-          }
+          
+          list = firestoreUsers;
+          localStorage.setItem("bi-global-users", JSON.stringify(list));
         } catch (fsErr) {
           console.warn("Firestore user fetch failed (rules or configuration issue):", fsErr);
+          const stored = localStorage.getItem("bi-global-users");
+          list = stored ? JSON.parse(stored) : [];
         }
+      } else {
+        const stored = localStorage.getItem("bi-global-users");
+        list = stored ? JSON.parse(stored) : [];
       }
 
-      if (list.length === 0) {
+      if (list.length === 0 && !db) {
         const initialMock: UserPlan[] = [
           {
             userId: "mock-user-1",
@@ -196,20 +192,39 @@ const AdminPanel: React.FC = () => {
   const fetchSystemConfig = async () => {
     setLoading(true);
     try {
+      let config: SystemConfiguration = {
+        maintenanceMode: false,
+        maxFileSize: 100,
+        enableAiAnalysis: true,
+        enableCustomReports: true,
+        defaultTimeout: 300
+      };
+
       const stored = localStorage.getItem("bi-system-config");
       if (stored) {
-        setSystemConfig(JSON.parse(stored));
-      } else {
-        const initialConfig: SystemConfiguration = {
-          maintenanceMode: false,
-          maxFileSize: 100,
-          enableAiAnalysis: true,
-          enableCustomReports: true,
-          defaultTimeout: 300
-        };
-        localStorage.setItem("bi-system-config", JSON.stringify(initialConfig));
-        setSystemConfig(initialConfig);
+        config = JSON.parse(stored);
       }
+
+      if (db) {
+        try {
+          const configSnap = await getDoc(doc(db, "system", "config"));
+          if (configSnap.exists()) {
+            const data = configSnap.data();
+            config = {
+              maintenanceMode: data.maintenanceMode !== undefined ? data.maintenanceMode : config.maintenanceMode,
+              maxFileSize: data.maxFileSize !== undefined ? data.maxFileSize : config.maxFileSize,
+              enableAiAnalysis: data.enableAiAnalysis !== undefined ? data.enableAiAnalysis : config.enableAiAnalysis,
+              enableCustomReports: data.enableCustomReports !== undefined ? data.enableCustomReports : config.enableCustomReports,
+              defaultTimeout: data.defaultTimeout !== undefined ? data.defaultTimeout : config.defaultTimeout
+            };
+            localStorage.setItem("bi-system-config", JSON.stringify(config));
+          }
+        } catch (fsErr) {
+          console.warn("Firestore config fetch failed:", fsErr);
+        }
+      }
+
+      setSystemConfig(config);
       setError(null);
     } catch (err: any) {
       setError(err.message);
@@ -382,13 +397,30 @@ const AdminPanel: React.FC = () => {
     try {
       localStorage.setItem("bi-system-config", JSON.stringify(systemConfig));
       
+      const payload: any = {
+        maintenanceMode: systemConfig.maintenanceMode,
+        maxFileSize: systemConfig.maxFileSize,
+        enableAiAnalysis: systemConfig.enableAiAnalysis,
+        enableCustomReports: systemConfig.enableCustomReports,
+        defaultTimeout: systemConfig.defaultTimeout
+      };
+
       if (newAdminPassword.trim()) {
         if (newAdminPassword.trim().length < 4) {
           throw new Error("Administrative passcode must be at least 4 characters.");
         }
         localStorage.setItem("bi-admin-password", newAdminPassword.trim());
+        payload.adminPassword = newAdminPassword.trim();
         addAuditLog("ADMIN_PASSWORD_CHANGED", "admin", { message: "Administrative passcode successfully updated." });
         setNewAdminPassword("");
+      }
+
+      if (db) {
+        try {
+          await setDoc(doc(db, "system", "config"), payload, { merge: true });
+        } catch (fsErr) {
+          console.warn("Firestore config save failed:", fsErr);
+        }
       }
 
       addAuditLog("CONFIG_UPDATED", "system", systemConfig);
