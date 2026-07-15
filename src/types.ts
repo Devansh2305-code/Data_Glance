@@ -66,3 +66,79 @@ export interface AIAnalysisResult {
   suggestedKPIs: AISuggestedKPI[];
   recommendedCharts: AIRecommendedChart[];
 }
+
+// ============ ADMIN TYPES ============
+
+export type PlanType = "free" | "pro" | "enterprise";
+
+export interface UserPlan {
+  userId: string;
+  email: string;
+  plan: PlanType;
+  createdAt: string;
+  updatedAt: string;
+  features: {
+    maxDatasets: number;
+    maxRows: number;
+    aiAnalysisCount: number;
+    customReports: boolean;
+    advancedCharts: boolean;
+    exportFormats: string[];
+  };
+}
+
+export interface PlanConfiguration {
+  free: {
+    maxDatasets: number;
+    maxRows: number;
+    aiAnalysisCount: number;
+    customReports: boolean;
+    advancedCharts: boolean;
+    exportFormats: string[];
+  };
+  pro: {
+    maxDatasets: number;
+    maxRows: number;
+    aiAnalysisCount: number;
+    customReports: boolean;
+    advancedCharts: boolean;
+    exportFormats: string[];
+  };
+  enterprise: {
+    maxDatasets: number;
+    maxRows: number;
+    aiAnalysisCount: number;
+    customReports: boolean;
+    advancedCharts: boolean;
+    exportFormats: string[];
+  };
+}
+
+export interface AdminAnalytics {
+  totalUsers: number;
+  activeUsers: number;
+  totalDatasets: number;
+  totalRowsProcessed: number;
+  aiAnalysisExecuted: number;
+  reportsGenerated: number;
+  timestamp: string;
+}
+
+export interface SystemConfiguration {
+  maintenanceMode: boolean;
+  maxFileSize: number; // in MB
+  enableAiAnalysis: boolean;
+  enableCustomReports: boolean;
+  defaultTimeout: number; // in seconds
+  geminiApiKey?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  userId: string;
+  targetUser?: string;
+  changes: Record<string, any>;
+  timestamp: string;
+  status: "success" | "failed";
+}
