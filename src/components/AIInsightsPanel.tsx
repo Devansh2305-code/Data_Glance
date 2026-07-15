@@ -490,8 +490,6 @@ How can I help you extract value from your active dataset today? You can write c
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-    if (!dataset || dataset.length === 0) return;
-    triggerAIAnalysis();
   }, [chatMessages, chatLoading]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [activeRole, dataset.length]);
