@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import adminRouter from "./api/admin";
 
 // Load environment variables immediately at server startup
 try {
@@ -40,6 +41,9 @@ function getGenAIClient(req?: express.Request): GoogleGenAI {
 }
 
 app.use(express.json({ limit: "10mb" }));
+
+// Mount Admin Router
+app.use("/api/admin", adminRouter);
 
 // API Endpoint for diagnosing and debugging setup on Vercel/Production
 app.get("/api/debug", async (req, res) => {
@@ -137,8 +141,8 @@ app.post("/api/analyze", async (req, res) => {
       
       Please perform deep analytical inspection. Specially focus on identifying:
       1. Any decreases, drops, underperformance, downward trends, or negative anomalies.
-      2. If a decrease or negative trend/underperformance is found, set "decreaseDetected" to true, explain EXACTLY why it is happening (rootCause analysis), and suggest precise actionable solutions (how can it be resolved).
-      3. Even if a major decrease is not explicitly found, analyze performance bottlenecks, cost challenges, operational risks, or growth barriers, and provide a clear "rootCause" (explaining the drivers) and "resolution" (actionable strategy) for every single insight.
+      2. If a decrease or negative trend/underperformance is found, set "decreaseDetected" to true, explain EXACTLY why it is happening (rootCause analysis), and suggest precise actionable soluti[...]
+      3. Even if a major decrease is not explicitly found, analyze performance bottlenecks, cost challenges, operational risks, or growth barriers, and provide a clear "rootCause" (explaining the[...]
       
       Provide a highly professional and structured JSON response that complies EXACTLY with this JSON Schema:
       
@@ -151,7 +155,7 @@ app.post("/api/analyze", async (req, res) => {
             "metricAffected": "The KPI or column this insight touches (e.g. ROAS, Revenue, Churn)",
             "decreaseDetected": true,
             "rootCause": "Deep business context explaining: Why is this value declining or behaving this way? Identify internal or external triggers, drivers, or correlations in the data.",
-            "resolution": "Actionable, precise business recommendations explaining: How can this decline/challenge be resolved? Provide practical tactics, operational improvements, or strategies."
+            "resolution": "Actionable, precise business recommendations explaining: How can this decline/challenge be resolved? Provide practical tactics, operational improvements, or strategies.[...]"
           }
         ],
         "suggestedKPIs": [
@@ -287,7 +291,7 @@ app.post("/api/chat", async (req, res) => {
       Please address the user's specific query. Use professional, analytical, yet simple, clear, and business-focused communication.
       Formulate calculations, highlight exceptions or trends, and propose strategic actions where appropriate.
       Use Markdown formatting (bold keywords, neat bullet points, small markdown tables) to organize information beautifully.
-      Keep answers concise, direct, and fully grounded in the actual dataset context. Avoid saying things like "Based on the sample of 85 rows..." or referring to sample limitations unless requested.
+      Keep answers concise, direct, and fully grounded in the actual dataset context. Avoid saying things like "Based on the sample of 85 rows..." or referring to sample limitations unless reques[...]
     `;
 
     // Map conversation array to Gemini SDK's structure
