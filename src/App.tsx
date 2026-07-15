@@ -10,6 +10,7 @@ import ReportCanvas from "./components/ReportCanvas";
 import DataTableView from "./components/DataTableView";
 import MeasuresManager from "./components/MeasuresManager";
 import AIInsightsPanel from "./components/AIInsightsPanel";
+import AdminPanel from "./components/AdminPanel";
 import { Role, ColumnMetadata, Measure, Widget, AIAnalysisResult } from "./types";
 import { getTemplateForRole } from "./utils";
 import { downloadHTMLReport } from "./reportGenerator";
@@ -25,7 +26,8 @@ import {
   Sun,
   Moon,
   FileDown,
-  Menu
+  Menu,
+  Shield
 } from "lucide-react";
 
 const getDefaultWidgets = (role: Role, availableMeasures: Measure[]): Widget[] => {
@@ -307,7 +309,7 @@ export default function App() {
     return [];
   });
 
-  const [currentView, setView] = useState<"report" | "data" | "measures" | "ai">(() => {
+  const [currentView, setView] = useState<"report" | "data" | "measures" | "ai" | "admin">(() => {
     const saved = localStorage.getItem("bi-current-view");
     return (saved as any) || "report";
   });
@@ -316,6 +318,9 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem("theme-mode") === "dark";
+  });
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(() => {
+    return localStorage.getItem("admin-key") !== null;
   });
 
   const [aiAnalysisResult, setAiAnalysisResult] = useState<AIAnalysisResult | null>(null);
@@ -398,7 +403,7 @@ export default function App() {
       expressionType: "simple",
       columnName: col.name,
       aggregation: "SUM",
-      format: col.name.toLowerCase().includes("spend") || col.name.toLowerCase().includes("sales") || col.name.toLowerCase().includes("revenue") || col.name.toLowerCase().includes("income") || col.name.toLowerCase().includes("$") ? "currency" : "integer",
+      format: col.name.toLowerCase().includes("spend") || col.name.toLowerCase().includes("sales") || col.name.toLowerCase().includes("revenue") || col.name.toLowerCase().includes("income") || col.name.toLowerCase().includes("cost") ? "currency" : "number",
       isCustom: false,
       description: `Auto-generated sum aggregation of ${col.name}.`,
     }));
@@ -528,6 +533,21 @@ export default function App() {
     );
   };
 
+  const handleToggleAdminMode = () => {
+    if (isAdminMode) {
+      localStorage.removeItem("admin-key");
+      setIsAdminMode(false);
+      setView("report");
+    } else {
+      const key = prompt("Enter admin key:");
+      if (key) {
+        localStorage.setItem("admin-key", key);
+        setIsAdminMode(true);
+        setView("admin");
+      }
+    }
+  };
+
   return (
     <div id="app-viewport-frame" className={`flex h-screen bg-slate-50 font-sans overflow-hidden print:bg-white print:h-auto ${isDarkMode ? "dark" : ""}`}>
       
@@ -591,10 +611,30 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {isAdminMode && (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 rounded-lg text-xs font-semibold text-purple-700 dark:text-purple-300">
+                <Shield className="w-3.5 h-3.5" />
+                Admin Mode
+              </div>
+            )}
+
+            <button
+              id="btn-toggle-admin"
+              onClick={handleToggleAdminMode}
+              className={`p-2 rounded-lg border transition ${
+                isAdminMode
+                  ? "bg-purple-600 hover:bg-purple-700 text-white border-purple-700"
+                  : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+              }`}
+              title={isAdminMode ? "Exit Admin Mode" : "Enter Admin Mode"}
+            >
+              <Shield className="w-4 h-4" />
+            </button>
+
             <button
               id="btn-toggle-dark-mode"
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 p-2 rounded-lg border border-slate-200 dark:border-slate-700 transition flex items-center justify-center shadow-xs"
+              className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 p-2 rounded-lg border border-slate-200 dark:border-slate-700 transition"
               title="Toggle Dark/Light Mode"
             >
               {isDarkMode ? <Sun className="w-4 h-4 text-amber-500 animate-pulse" /> : <Moon className="w-4 h-4 text-slate-500" />}
@@ -603,28 +643,32 @@ export default function App() {
             <button
               id="btn-global-download-report"
               onClick={() => handleDownloadReport({})}
-              className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold text-xs py-2 px-2.5 sm:px-3.5 rounded-lg transition flex items-center space-x-1.5 shadow-sm"
+              className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold text-xs py-2 px-3 sm:px-4 rounded-lg transition flex items-center gap-1.5 shadow-sm"
               title="Download clean executive report as PDF"
             >
               <FileDown className="w-4 h-4 text-slate-500 dark:text-slate-400" />
               <span className="hidden md:inline">Download Report</span>
             </button>
 
-            <button
-              id="btn-toggle-importer"
-              onClick={() => setIsImportOpen(!isImportOpen)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 px-3 sm:px-4 rounded-lg transition flex items-center space-x-1.5 shadow-sm"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{isImportOpen ? "View Dashboard" : "Import CSV / Excel"}</span>
-              <span className="inline sm:hidden">{isImportOpen ? "View" : "Import"}</span>
-            </button>
+            {!isAdminMode && (
+              <button
+                id="btn-toggle-importer"
+                onClick={() => setIsImportOpen(!isImportOpen)}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 px-3 sm:px-4 rounded-lg transition flex items-center space-x-1.5 shadow-sm"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{isImportOpen ? "View Dashboard" : "Import CSV / Excel"}</span>
+                <span className="inline sm:hidden">{isImportOpen ? "View" : "Import"}</span>
+              </button>
+            )}
           </div>
         </header>
 
         {/* Dynamic Content Views */}
         <main className="flex-1 overflow-hidden print:overflow-visible">
-          {isImportOpen ? (
+          {isAdminMode ? (
+            <AdminPanel />
+          ) : isImportOpen ? (
             <div className="h-full overflow-y-auto p-6 bg-slate-50">
               <div className="max-w-xl mx-auto text-center mb-4">
                 <button 
@@ -700,4 +744,3 @@ export default function App() {
     </div>
   );
 }
-
