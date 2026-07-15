@@ -44,7 +44,7 @@ export default function BillingView({
     isSlotPurchase: false
   });
 
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "upi">("card");
+  const [paymentMethod, setPaymentMethod] = useState<"upi">("upi");
   const [cardNumber, setCardNumber] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
@@ -155,16 +155,9 @@ export default function BillingView({
     e.preventDefault();
     setCheckoutError("");
 
-    if (paymentMethod === "card") {
-      if (!cardNumber || !cardExpiry || !cardCvv) {
-        setCheckoutError("Please fill in all credit card details.");
-        return;
-      }
-    } else {
-      if (!upiId || !upiId.includes("@")) {
-        setCheckoutError("Please enter a valid UPI ID (e.g. name@bank).");
-        return;
-      }
+    if (!upiId || !upiId.includes("@")) {
+      setCheckoutError("Please enter a valid UPI ID (e.g. name@bank).");
+      return;
     }
 
     setIsProcessing(true);
@@ -367,90 +360,19 @@ export default function BillingView({
               </div>
             )}
 
-            {/* Payment Method Switcher */}
-            <div className="grid grid-cols-2 bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-800/60 rounded-lg p-1 mb-5 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setPaymentMethod("card")}
-                disabled={isProcessing}
-                className={`py-1.5 rounded transition cursor-pointer ${
-                  paymentMethod === "card" 
-                    ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow" 
-                    : "text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                Credit Card
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentMethod("upi")}
-                disabled={isProcessing}
-                className={`py-1.5 rounded transition cursor-pointer ${
-                  paymentMethod === "upi" 
-                    ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow" 
-                    : "text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                UPI Address
-              </button>
-            </div>
-
             {/* Checkout Form */}
             <form onSubmit={handlePaySubmit} className="space-y-4">
-              {paymentMethod === "card" ? (
-                <>
-                  <div>
-                    <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Card Number</label>
-                    <input
-                      type="text"
-                      maxLength={16}
-                      placeholder="4111 2222 3333 4444"
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, ""))}
-                      className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 focus:border-blue-600 rounded-lg text-xs outline-none transition"
-                      disabled={isProcessing}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Expiry Date</label>
-                      <input
-                        type="text"
-                        maxLength={5}
-                        placeholder="MM/YY"
-                        value={cardExpiry}
-                        onChange={(e) => setCardExpiry(e.target.value)}
-                        className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 focus:border-blue-600 rounded-lg text-xs outline-none transition"
-                        disabled={isProcessing}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">CVV</label>
-                      <input
-                        type="password"
-                        maxLength={3}
-                        placeholder="•••"
-                        value={cardCvv}
-                        onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, ""))}
-                        className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 focus:border-blue-600 rounded-lg text-xs outline-none transition"
-                        disabled={isProcessing}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">UPI Address ID</label>
-                  <input
-                    type="text"
-                    placeholder="username@okaxis"
-                    value={upiId}
-                    onChange={(e) => setUpiId(e.target.value)}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 focus:border-blue-600 rounded-lg text-xs outline-none transition"
-                    disabled={isProcessing}
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">UPI Address ID</label>
+                <input
+                  type="text"
+                  placeholder="username@okaxis"
+                  value={upiId}
+                  onChange={(e) => setUpiId(e.target.value)}
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 focus:border-blue-600 rounded-lg text-xs outline-none transition"
+                  disabled={isProcessing}
+                />
+              </div>
 
               {/* Submit Payment button */}
               <button

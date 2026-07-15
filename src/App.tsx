@@ -19,7 +19,7 @@ import { getTemplateForRole } from "./utils";
 import { downloadHTMLReport } from "./reportGenerator";
 import { onAuthStateChanged, signOut, updateProfile } from "firebase/auth";
 import { auth, hasFirebaseConfig, db } from "./firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { 
   Database, 
   RefreshCw, 
@@ -356,7 +356,15 @@ export default function App() {
   // Synchronize with logged-in user details
   useEffect(() => {
     const uid = currentUser?.uid || "anonymous";
+    if (uid === "anonymous") {
+      setUserPlan("free");
+      setAnalysesLeft(5);
+      setProjectSlots(1);
+      setSavedProjects([]);
+      return;
+    }
     
+    // 1. Initial load from localStorage (instant cache read)
     const plan = localStorage.getItem(`bi-plan-${uid}`) as PlanType || "free";
     const credits = localStorage.getItem(`bi-credits-${uid}`);
     const slots = localStorage.getItem(`bi-slots-${uid}`);
@@ -364,12 +372,7 @@ export default function App() {
 
     setUserPlan(plan);
     setAnalysesLeft(credits ? parseInt(credits, 10) : 5);
-    
-    if (slots) {
-      setProjectSlots(parseInt(slots, 10));
-    } else {
-      setProjectSlots(plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 1);
-    }
+    setProjectSlots(slots ? parseInt(slots, 10) : (plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 1));
 
     if (projs) {
       try {
@@ -379,6 +382,32 @@ export default function App() {
       }
     } else {
       setSavedProjects([]);
+    }
+
+    // 2. Fetch from Firestore for real-time cross-device sync
+    if (db && uid !== "admin-uid") {
+      getDoc(doc(db, "users", uid))
+        .then((docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            const serverPlan = data.plan as PlanType || "free";
+            const serverCredits = data.analysesLeft !== undefined ? Number(data.analysesLeft) : 5;
+            const serverSlots = data.projectSlots !== undefined ? Number(data.projectSlots) : (serverPlan === "free" ? 1 : serverPlan === "prime" ? 5 : serverPlan === "apex" ? 60 : 1);
+
+            // Update states if they differ from localStorage cache
+            setUserPlan(serverPlan);
+            setAnalysesLeft(serverCredits);
+            setProjectSlots(serverSlots);
+
+            // Save back to localStorage cache
+            localStorage.setItem(`bi-plan-${uid}`, serverPlan);
+            localStorage.setItem(`bi-credits-${uid}`, String(serverCredits));
+            localStorage.setItem(`bi-slots-${uid}`, String(serverSlots));
+          }
+        })
+        .catch((err) => {
+          console.warn("Firestore fetch on login failed:", err);
+        });
     }
   }, [currentUser]);
 
