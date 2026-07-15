@@ -327,7 +327,6 @@ export default function App() {
 
   const isFirstMount = useRef(true);
 
-  // Apply dark class and persist theme configuration
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add("dark");
@@ -338,7 +337,6 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Persist states to localStorage when they change
   useEffect(() => {
     localStorage.setItem("bi-active-role", activeRole);
   }, [activeRole]);
@@ -367,14 +365,17 @@ export default function App() {
     localStorage.setItem("bi-current-view", currentView);
   }, [currentView]);
 
-  // Load Initial Dataset Template on Role Change or Startup
   useEffect(() => {
     if (isFirstMount.current) {
       isFirstMount.current = false;
       const savedDataset = localStorage.getItem("bi-dataset");
       if (savedDataset) {
-        return; // Skip loading template on startup if we already have saved data
+        return;
       }
+    }
+
+    if (isCustomDataset && dataset.length > 0 && columns.length > 0) {
+      return;
     }
 
     const template = getTemplateForRole(activeRole);
@@ -383,18 +384,16 @@ export default function App() {
     setMeasures(template.measures);
     setIsCustomDataset(false);
     setAiAnalysisResult(null);
-    // Setup matching widgets
     setWidgets(getDefaultWidgets(activeRole, template.measures));
-  }, [activeRole]);
+  }, [activeRole, isCustomDataset, dataset.length, columns.length]);
 
-  // Handle fully custom file import
   const handleImportCustomData = (importedData: any[], importedColumns: ColumnMetadata[]) => {
     setDataset(importedData);
     setColumns(importedColumns);
     setIsCustomDataset(true);
+    setAiAnalysisResult(null);
     setIsImportOpen(false);
 
-    // Create default aggregates automatically for all numeric columns in the uploaded dataset
     const numericCols = importedColumns.filter(c => c.type === "number");
     const autoMeasures: Measure[] = numericCols.map((col, index) => ({
       id: `auto_sum_${index}`,
@@ -410,13 +409,11 @@ export default function App() {
 
     setMeasures(autoMeasures);
 
-    // Build some smart default charts using the imported columns
     const stringCols = importedColumns.filter(c => c.type === "string");
     const defaultXAxis = stringCols[0]?.name || importedColumns[0]?.name || "";
     
     const freshWidgets: Widget[] = [];
     
-    // Add first 3 numeric metrics as KPI cards
     autoMeasures.slice(0, 3).forEach((measure, idx) => {
       freshWidgets.push({
         id: `auto_kpi_${idx}`,
@@ -433,7 +430,6 @@ export default function App() {
       });
     });
 
-    // Add a default Bar Chart
     if (defaultXAxis && autoMeasures[0]) {
       freshWidgets.push({
         id: "auto_bar_chart",
@@ -450,7 +446,6 @@ export default function App() {
       });
     }
 
-    // Add a default Line Chart
     if (defaultXAxis && autoMeasures[1]) {
       freshWidgets.push({
         id: "auto_line_chart",
@@ -481,14 +476,13 @@ export default function App() {
 
   const handleRemoveMeasure = (id: string) => {
     setMeasures(prev => prev.filter(m => m.id !== id));
-    // Also strip deleted measure out of any widgets currently plotting it
     setWidgets(prev => prev.map(w => ({
       ...w,
       config: {
         ...w.config,
         yAxisMeasures: w.config.yAxisMeasures.filter(mId => mId !== id)
       }
-    })).filter(w => w.type !== "kpi" || w.config.yAxisMeasures.length > 0)); // remove KPI cards that are now empty
+    })).filter(w => w.type !== "kpi" || w.config.yAxisMeasures.length > 0));
   };
 
   const handleAddWidget = (widget: Widget) => {
@@ -550,8 +544,6 @@ export default function App() {
 
   return (
     <div id="app-viewport-frame" className={`flex h-screen bg-slate-50 font-sans overflow-hidden print:bg-white print:h-auto ${isDarkMode ? "dark" : ""}`}>
-      
-      {/* Side Navigation Rail - Desktop */}
       <div className="hidden lg:block print:hidden h-full">
         <Sidebar 
           currentView={currentView} 
@@ -563,15 +555,12 @@ export default function App() {
         />
       </div>
 
-      {/* Side Navigation Rail - Mobile Drawer */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden print:hidden" id="mobile-sidebar-drawer">
-          {/* Backdrop */}
           <div 
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity duration-200" 
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          {/* Drawer Body */}
           <div className="relative flex w-full max-w-xs flex-1 flex-col bg-white dark:bg-slate-900 focus:outline-none shadow-xl transform transition-transform duration-200">
             <Sidebar 
               currentView={currentView} 
@@ -586,13 +575,9 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Workspace Frame */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden print:h-auto print:overflow-visible">
-        
-        {/* Top Operational Header */}
         <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-4 flex items-center justify-between shrink-0 print:hidden shadow-xs">
           <div className="flex items-center space-x-2 sm:space-x-3.5">
-            {/* Hamburger button for mobile screens */}
             <button
               id="btn-open-mobile-menu"
               onClick={() => setIsMobileMenuOpen(true)}
@@ -666,7 +651,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Dynamic Content Views */}
         <main className="flex-1 overflow-hidden print:overflow-visible">
           {isAdminMode ? (
             <AdminPanel />
@@ -746,7 +730,6 @@ export default function App() {
           )}
         </main>
       </div>
-
     </div>
   );
 }
