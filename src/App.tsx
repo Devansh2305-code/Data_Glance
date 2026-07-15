@@ -559,6 +559,7 @@ export default function App() {
           activeRole={activeRole} 
           setRole={setActiveRole}
           dataLoaded={dataset.length > 0}
+          isAdminMode={isAdminMode}
         />
       </div>
 
@@ -578,6 +579,7 @@ export default function App() {
               activeRole={activeRole} 
               setRole={setActiveRole}
               dataLoaded={dataset.length > 0}
+              isAdminMode={isAdminMode}
               onClose={() => setIsMobileMenuOpen(false)}
             />
           </div>
@@ -735,6 +737,10 @@ export default function App() {
                     setResult={setAiAnalysisResult}
                   />
                 </div>
+              )}
+
+              {currentView === "admin" && isAdminMode && (
+                <AdminPanel />
               )}
             </>
           )}

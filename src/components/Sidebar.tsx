@@ -10,16 +10,18 @@ import {
   Grid,
   Users,
   ChevronDown,
-  X
+  X,
+  Shield
 } from "lucide-react";
 import { Role } from "../types";
 
 interface SidebarProps {
-  currentView: "report" | "data" | "measures" | "ai";
-  setView: (view: "report" | "data" | "measures" | "ai") => void;
+  currentView: "report" | "data" | "measures" | "ai" | "admin";
+  setView: (view: "report" | "data" | "measures" | "ai" | "admin") => void;
   activeRole: Role;
   setRole: (role: Role) => void;
   dataLoaded: boolean;
+  isAdminMode?: boolean;
   onClose?: () => void;
 }
 
@@ -29,6 +31,7 @@ export default function Sidebar({
   activeRole, 
   setRole,
   dataLoaded,
+  isAdminMode = false,
   onClose
 }: SidebarProps) {
   const views = [
@@ -45,7 +48,7 @@ export default function Sidebar({
     onClose?.();
   };
 
-  const handleViewChange = (view: "report" | "data" | "measures" | "ai") => {
+  const handleViewChange = (view: "report" | "data" | "measures" | "ai" | "admin") => {
     setView(view);
     onClose?.();
   };
@@ -92,7 +95,7 @@ export default function Sidebar({
             id="role-select"
             value={activeRole}
             onChange={(e) => handleRoleChange(e.target.value as Role)}
-            className="w-full pl-9 pr-8 py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 dark:focus:ring-blue-500/30 focus:border-blue-500 transition-all cursor-pointer font-medium appearance-none"
+            className="w-full pl-9 pr-8 py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all"
           >
             {roles.map((role) => (
               <option key={role} value={role} className="dark:bg-slate-900">
@@ -137,6 +140,34 @@ export default function Sidebar({
             </button>
           );
         })}
+
+        {/* Admin Dashboard Button */}
+        {isAdminMode && (
+          <>
+            <label className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-bold block mb-3 px-1 mt-6">
+              Administration
+            </label>
+            <button
+              id="nav-view-admin"
+              onClick={() => handleViewChange("admin")}
+              className={`w-full flex items-start space-x-3 p-2.5 rounded-lg text-left transition-all duration-150 border group cursor-pointer ${
+                currentView === "admin"
+                  ? "bg-purple-50 dark:bg-purple-950/40 border-purple-100 dark:border-purple-900/40 text-purple-700 dark:text-purple-400 font-medium shadow-xs"
+                  : "hover:bg-slate-50 dark:hover:bg-slate-800/50 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <Shield className={`w-4 h-4 shrink-0 mt-0.5 transition-colors ${
+                currentView === "admin" ? "text-purple-600 dark:text-purple-400" : "text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300"
+              }`} />
+              <div className="leading-snug">
+                <div className="text-xs font-semibold">Admin Dashboard</div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-slate-500 dark:group-hover:text-slate-400 mt-0.5 font-normal">
+                  Users & configuration
+                </div>
+              </div>
+            </button>
+          </>
+        )}
       </nav>
 
       {/* Footer System Status Info */}
