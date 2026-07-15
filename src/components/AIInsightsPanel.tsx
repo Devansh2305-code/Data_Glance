@@ -16,10 +16,11 @@ import {
   MessageSquare,
   HelpCircle,
   Sparkle,
-  Key
+  Key,
+  Lock
 } from "lucide-react";
 import Markdown from "react-markdown";
-import { AIAnalysisResult, AIRecommendedChart, AISuggestedKPI, Widget, Role, Measure, ColumnMetadata } from "../types";
+import { AIAnalysisResult, AIRecommendedChart, AISuggestedKPI, Widget, Role, Measure, ColumnMetadata, PlanType } from "../types";
 
 interface AIInsightsPanelProps {
   dataset: any[];
@@ -29,6 +30,12 @@ interface AIInsightsPanelProps {
   onAddWidget: (widget: Widget) => void;
   result: AIAnalysisResult | null;
   setResult: (res: AIAnalysisResult | null) => void;
+  
+  // Billing props
+  userPlan: PlanType;
+  analysesLeft: number;
+  onDecrementAnalyses: () => void;
+  setView: (view: any) => void;
 }
 
 interface ChatMessage {
@@ -454,7 +461,11 @@ export default function AIInsightsPanel({
   measures,
   onAddWidget,
   result,
-  setResult
+  setResult,
+  userPlan,
+  analysesLeft,
+  onDecrementAnalyses,
+  setView
 }: AIInsightsPanelProps) {
   // Tab control state
   const [activeTab, setActiveTab] = useState<"audit" | "chat">("audit");
@@ -533,6 +544,7 @@ How can I help you extract value from your active dataset today? You can write c
 
       const data = await response.json();
       setResult(data);
+      onDecrementAnalyses();
     } catch (err: any) {
       console.error("Gemini API error:", err);
       let errMsg = err.message || "Failed to communicate with Gemini AI Engine.";
@@ -805,20 +817,40 @@ How can I help you extract value from your active dataset today? You can write c
       {/* Render TAB 1: EXECUTIVE AUDIT */}
       {activeTab === "audit" && (
         <div className="space-y-6">
-          
-          {/* Engine Selector Segment */}
-          <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs">
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 font-mono tracking-wider">Analysis Engine Core</span>
-              <p className="text-slate-600 dark:text-slate-300 font-medium">
-                Generating rich, multi-dimensional analytical insights using the real-time **Gemini AI model** based strictly on your uploaded dataset.
-              </p>
+          {userPlan === "free" && analysesLeft <= 0 ? (
+            <div className="bg-slate-900/5 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center space-y-4">
+              <div className="p-3 bg-amber-500/10 text-amber-500 rounded-full w-fit mx-auto border border-amber-500/20">
+                <Lock className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="space-y-1 max-w-sm mx-auto">
+                <h4 className="text-base font-bold text-slate-800 dark:text-white">AI Narratives Locked</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  You have utilized all 5 free AI analysis narrative credits. Please upgrade your active subscription plan to unlock unlimited Gemini narration reports.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setView("billing")}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-md active:scale-98 transition cursor-pointer"
+              >
+                Upgrade to Premium
+              </button>
             </div>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold border border-blue-500/20 shadow-3xs shrink-0 select-none">
-              <Sparkles className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
-              <span>Gemini Engine Active</span>
-            </div>
-          </div>
+          ) : (
+            <>
+              {/* Engine Selector Segment */}
+              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs font-medium">
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 font-mono tracking-wider">Analysis Engine Core</span>
+                  <p className="text-slate-600 dark:text-slate-300">
+                    Generating rich, multi-dimensional analytical insights using the real-time **Gemini AI model** based strictly on your uploaded dataset.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold border border-blue-500/20 shadow-3xs shrink-0 select-none">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+                  <span>Gemini Engine Active</span>
+                </div>
+              </div>
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
@@ -1073,6 +1105,8 @@ How can I help you extract value from your active dataset today? You can write c
                 Click the <strong>"Run Complete Audit"</strong> button above to request Gemini to parse your structured raw columns, generate KPI recommendations, and uncover narratives.
               </p>
             </div>
+          )}
+            </>
           )}
         </div>
       )}

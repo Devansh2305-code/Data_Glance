@@ -69,7 +69,17 @@ export interface AIAnalysisResult {
 
 // ============ ADMIN TYPES ============
 
-export type PlanType = "free" | "pro" | "enterprise";
+export type PlanType = "free" | "core" | "prime" | "apex";
+
+export interface SavedProject {
+  id: string;
+  name: string;
+  dataset: any[];
+  columns: ColumnMetadata[];
+  measures: Measure[];
+  widgets: Widget[];
+  updatedAt: string;
+}
 
 export interface UserPlan {
   userId: string;

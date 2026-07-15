@@ -13,7 +13,8 @@ import AIInsightsPanel from "./components/AIInsightsPanel";
 import AdminPanel from "./components/AdminPanel";
 import LandingPage from "./components/LandingPage";
 import RoleOnboarding from "./components/RoleOnboarding";
-import { Role, ColumnMetadata, Measure, Widget, AIAnalysisResult } from "./types";
+import BillingView from "./components/BillingView";
+import { Role, ColumnMetadata, Measure, Widget, AIAnalysisResult, PlanType, SavedProject } from "./types";
 import { getTemplateForRole } from "./utils";
 import { downloadHTMLReport } from "./reportGenerator";
 import { onAuthStateChanged, signOut, updateProfile } from "firebase/auth";
@@ -327,7 +328,7 @@ export default function App() {
     return [];
   });
 
-  const [currentView, setView] = useState<"report" | "data" | "measures" | "ai" | "admin">(() => {
+  const [currentView, setView] = useState<"report" | "data" | "measures" | "ai" | "admin" | "billing">(() => {
     const saved = localStorage.getItem("bi-current-view");
     return (saved as any) || "report";
   });
@@ -345,6 +346,101 @@ export default function App() {
 
   const [aiCleanMessage, setAiCleanMessage] = useState<string | null>(null);
   const isFirstMount = useRef(true);
+
+  const [userPlan, setUserPlan] = useState<PlanType>("free");
+  const [analysesLeft, setAnalysesLeft] = useState<number>(5);
+  const [projectSlots, setProjectSlots] = useState<number>(1);
+  const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
+
+  // Synchronize with logged-in user details
+  useEffect(() => {
+    const uid = currentUser?.uid || "anonymous";
+    
+    const plan = localStorage.getItem(`bi-plan-${uid}`) as PlanType || "free";
+    const credits = localStorage.getItem(`bi-credits-${uid}`);
+    const slots = localStorage.getItem(`bi-slots-${uid}`);
+    const projs = localStorage.getItem(`bi-projects-${uid}`);
+
+    setUserPlan(plan);
+    setAnalysesLeft(credits ? parseInt(credits, 10) : 5);
+    
+    if (slots) {
+      setProjectSlots(parseInt(slots, 10));
+    } else {
+      setProjectSlots(plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 1);
+    }
+
+    if (projs) {
+      try {
+        setSavedProjects(JSON.parse(projs));
+      } catch (e) {
+        setSavedProjects([]);
+      }
+    } else {
+      setSavedProjects([]);
+    }
+  }, [currentUser]);
+
+  const handleDecrementAnalyses = () => {
+    if (userPlan !== "free") return; // Premium plans have unlimited narratives
+    const uid = currentUser?.uid || "anonymous";
+    const nextCredits = Math.max(analysesLeft - 1, 0);
+    setAnalysesLeft(nextCredits);
+    localStorage.setItem(`bi-credits-${uid}`, String(nextCredits));
+  };
+
+  const handleUpgradePlan = (plan: PlanType, newSlotsCount: number) => {
+    const uid = currentUser?.uid || "anonymous";
+    setUserPlan(plan);
+    setProjectSlots(newSlotsCount);
+    localStorage.setItem(`bi-plan-${uid}`, plan);
+    localStorage.setItem(`bi-slots-${uid}`, String(newSlotsCount));
+  };
+
+  const handleSaveCurrentProject = (name: string) => {
+    if (savedProjects.length >= projectSlots) {
+      alert(`You have reached the limit of ${projectSlots} saved projects for your plan. Please upgrade your plan in Billing.`);
+      setView("billing");
+      return;
+    }
+
+    const uid = currentUser?.uid || "anonymous";
+    const newProject: SavedProject = {
+      id: Math.random().toString(36).substr(2, 9),
+      name,
+      dataset,
+      columns,
+      measures,
+      widgets,
+      updatedAt: new Date().toISOString()
+    };
+
+    const updatedProjects = [...savedProjects, newProject];
+    setSavedProjects(updatedProjects);
+    localStorage.setItem(`bi-projects-${uid}`, JSON.stringify(updatedProjects));
+    alert(`Project "${name}" saved successfully!`);
+  };
+
+  const handleLoadProject = (id: string) => {
+    const proj = savedProjects.find(p => p.id === id);
+    if (!proj) return;
+
+    setDataset(proj.dataset);
+    setColumns(proj.columns);
+    setMeasures(proj.measures);
+    setWidgets(proj.widgets);
+    setIsCustomDataset(true);
+    setAiAnalysisResult(null);
+    setView("report");
+    alert(`Project "${proj.name}" loaded successfully!`);
+  };
+
+  const handleDeleteProject = (id: string) => {
+    const uid = currentUser?.uid || "anonymous";
+    const updatedProjects = savedProjects.filter(p => p.id !== id);
+    setSavedProjects(updatedProjects);
+    localStorage.setItem(`bi-projects-${uid}`, JSON.stringify(updatedProjects));
+  };
 
   useEffect(() => {
     if (!hasFirebaseConfig) {
@@ -697,6 +793,13 @@ export default function App() {
           setRole={setActiveRole}
           dataLoaded={dataset.length > 0}
           isAdminMode={isAdminMode}
+          userPlan={userPlan}
+          analysesLeft={analysesLeft}
+          projectSlots={projectSlots}
+          savedProjects={savedProjects}
+          onSaveCurrentProject={handleSaveCurrentProject}
+          onLoadProject={handleLoadProject}
+          onDeleteProject={handleDeleteProject}
         />
       </div>
 
@@ -715,6 +818,13 @@ export default function App() {
               dataLoaded={dataset.length > 0}
               isAdminMode={isAdminMode}
               onClose={() => setIsMobileMenuOpen(false)}
+              userPlan={userPlan}
+              analysesLeft={analysesLeft}
+              projectSlots={projectSlots}
+              savedProjects={savedProjects}
+              onSaveCurrentProject={handleSaveCurrentProject}
+              onLoadProject={handleLoadProject}
+              onDeleteProject={handleDeleteProject}
             />
           </div>
         </div>
@@ -862,12 +972,28 @@ export default function App() {
                     onAddWidget={handleAddWidget}
                     result={aiAnalysisResult}
                     setResult={setAiAnalysisResult}
+                    userPlan={userPlan}
+                    analysesLeft={analysesLeft}
+                    onDecrementAnalyses={handleDecrementAnalyses}
+                    setView={setView}
                   />
                 </div>
               )}
 
               {currentView === "admin" && isAdminMode && (
                 <AdminPanel />
+              )}
+
+              {currentView === "billing" && (
+                <div id="billing-view-scroll" className="h-full overflow-y-auto">
+                  <BillingView 
+                    currentPlan={userPlan}
+                    analysesLeft={analysesLeft}
+                    projectSlots={projectSlots}
+                    savedProjectsCount={savedProjects.length}
+                    onUpgradePlan={handleUpgradePlan}
+                  />
+                </div>
               )}
             </>
           )}
