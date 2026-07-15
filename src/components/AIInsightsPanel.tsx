@@ -495,7 +495,6 @@ How can I help you extract value from your active dataset today? You can write c
     const targetMode = forcedMode || insightMode;
     const activeKey = overrideKey !== undefined ? overrideKey : customApiKey;
     setLoading(true);
-    setError(null);
     setWasFallbackActivated(false);
 
     if (targetMode === "local") {
@@ -579,6 +578,16 @@ How can I help you extract value from your active dataset today? You can write c
     onAddWidget(newWidget);
     setAppliedChartIds(prev => ({ ...prev, [index]: true }));
   };
+  const hasMountedRoleEffect = useRef(false);
+  useEffect(() => {
+    if (!hasMountedRoleEffect.current) {
+      hasMountedRoleEffect.current = true;
+        return;
+    }
+    if (!dataset || dataset.length === 0) return;
+    triggerAIAnalysis();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRole, dataset.length]);
 
   // Chat request function with instant heuristic fallback
   const handleSendChatMessage = async (userQueryText: string) => {
