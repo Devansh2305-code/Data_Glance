@@ -11,9 +11,13 @@ import DataTableView from "./components/DataTableView";
 import MeasuresManager from "./components/MeasuresManager";
 import AIInsightsPanel from "./components/AIInsightsPanel";
 import AdminPanel from "./components/AdminPanel";
+import LandingPage from "./components/LandingPage";
+import RoleOnboarding from "./components/RoleOnboarding";
 import { Role, ColumnMetadata, Measure, Widget, AIAnalysisResult } from "./types";
 import { getTemplateForRole } from "./utils";
 import { downloadHTMLReport } from "./reportGenerator";
+import { onAuthStateChanged, signOut, updateProfile } from "firebase/auth";
+import { auth, hasFirebaseConfig } from "./firebase";
 import { 
   Database, 
   RefreshCw, 
@@ -27,7 +31,10 @@ import {
   Moon,
   FileDown,
   Menu,
-  Shield
+  Shield,
+  LogOut,
+  PieChart,
+  Loader
 } from "lucide-react";
 
 const getDefaultWidgets = (role: Role, availableMeasures: Measure[]): Widget[] => {
@@ -268,6 +275,15 @@ const getDefaultWidgets = (role: Role, availableMeasures: Measure[]): Widget[] =
 };
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    if (!hasFirebaseConfig) {
+      const saved = localStorage.getItem("bi-mock-user");
+      return saved ? JSON.parse(saved) : null;
+    }
+    return null;
+  });
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [activeRole, setActiveRole] = useState<Role>(() => {
     const saved = localStorage.getItem("bi-active-role");
     return (saved as Role) || "CMO";
@@ -326,6 +342,86 @@ export default function App() {
   const [aiAnalysisResult, setAiAnalysisResult] = useState<AIAnalysisResult | null>(null);
 
   const isFirstMount = useRef(true);
+
+  useEffect(() => {
+    if (!hasFirebaseConfig) {
+      setAuthLoading(false);
+      return;
+    }
+
+    if (!auth) {
+      setAuthLoading(false);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthLoading(false);
+      if (user && user.displayName) {
+        try {
+          const profile = JSON.parse(user.displayName);
+          if (profile.role) {
+            setActiveRole(profile.role);
+          }
+        } catch (e) {
+          // Plain text profile display name from Google Sign-In
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleSelectRole = async (role: Role) => {
+    if (hasFirebaseConfig && auth && auth.currentUser) {
+      const name = auth.currentUser.displayName || auth.currentUser.email?.split("@")[0] || "User";
+      const profileJson = JSON.stringify({ name, role });
+      await updateProfile(auth.currentUser, { displayName: profileJson });
+      setCurrentUser({
+        ...auth.currentUser,
+        displayName: profileJson
+      });
+    } else {
+      if (currentUser) {
+        const name = currentUser.email.split("@")[0];
+        const updatedUser = {
+          ...currentUser,
+          displayName: JSON.stringify({ name, role })
+        };
+        setCurrentUser(updatedUser);
+        localStorage.setItem("bi-mock-user", JSON.stringify(updatedUser));
+      }
+    }
+    setActiveRole(role);
+  };
+
+  const handleMockLogin = (mockUser: { uid: string; email: string; displayName: string }) => {
+    setCurrentUser(mockUser);
+    localStorage.setItem("bi-mock-user", JSON.stringify(mockUser));
+    if (mockUser.displayName) {
+      try {
+        const profile = JSON.parse(mockUser.displayName);
+        if (profile.role) {
+          setActiveRole(profile.role);
+        }
+      } catch (e) {
+        // No role parsed
+      }
+    }
+  };
+
+  const handleLogout = async () => {
+    if (hasFirebaseConfig && auth) {
+      try {
+        await signOut(auth);
+      } catch (err) {
+        console.error("Sign out failed:", err);
+      }
+    } else {
+      localStorage.removeItem("bi-mock-user");
+      setCurrentUser(null);
+    }
+  };
 
   useEffect(() => {
     if (isDarkMode) {
@@ -542,6 +638,46 @@ export default function App() {
     }
   };
 
+  // User profile and role derivation
+  let userRole: Role | null = null;
+  let userName = "";
+  if (currentUser) {
+    if (currentUser.displayName) {
+      try {
+        const parsed = JSON.parse(currentUser.displayName);
+        if (parsed.role) userRole = parsed.role;
+        if (parsed.name) userName = parsed.name;
+      } catch (e) {
+        userName = currentUser.displayName;
+      }
+    }
+    if (!userName) {
+      userName = currentUser.email?.split("@")[0] || "User";
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center">
+          <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-3 rounded-lg shadow-lg mb-6 animate-pulse">
+            <PieChart className="w-8 h-8 stroke-[2.5]" />
+          </div>
+          <Loader className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+          <p className="text-slate-400 text-sm font-semibold tracking-wide uppercase">Initializing Workspace...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <LandingPage onMockLogin={handleMockLogin} />;
+  }
+
+  if (!userRole) {
+    return <RoleOnboarding userName={userName} onSelectRole={handleSelectRole} />;
+  }
+
   return (
     <div id="app-viewport-frame" className={`flex h-screen bg-slate-50 font-sans overflow-hidden print:bg-white print:h-auto ${isDarkMode ? "dark" : ""}`}>
       <div className="hidden lg:block print:hidden h-full">
@@ -648,6 +784,22 @@ export default function App() {
                 <span className="inline sm:hidden">{isImportOpen ? "View" : "Import"}</span>
               </button>
             )}
+
+            <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden xs:block" />
+
+            <div className="hidden xs:flex flex-col items-end leading-none text-right">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 max-w-28 truncate">{userName}</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 max-w-28 truncate">{currentUser?.email}</span>
+            </div>
+
+            <button
+              id="btn-logout"
+              onClick={handleLogout}
+              className="bg-slate-100 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/20 text-slate-700 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-450 p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-rose-200 dark:hover:border-rose-900/50 transition cursor-pointer"
+              title={`Logged in as ${userName} (${currentUser?.email}). Click to log out.`}
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </header>
 
