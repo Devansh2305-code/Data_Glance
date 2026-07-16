@@ -372,7 +372,7 @@ export default function App() {
 
     setUserPlan(plan);
     setAnalysesLeft(credits ? parseInt(credits, 10) : 5);
-    setProjectSlots(slots ? parseInt(slots, 10) : (plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 1));
+    setProjectSlots(slots ? parseInt(slots, 10) : (plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 2));
 
     if (projs) {
       try {
@@ -384,43 +384,56 @@ export default function App() {
       setSavedProjects([]);
     }
 
-    // 2. Fetch from Supabase for real-time cross-device sync
-    if (hasSupabaseConfig && uid !== "admin-uid" && uid !== "anonymous") {
-      supabase
-        .from("users")
-        .select("*")
-        .eq("user_id", uid)
-        .single()
-        .then(({ data, error }) => {
-          if (data && !error) {
-            const serverPlan = data.plan as PlanType || "free";
-            const serverCredits = data.analyses_left !== undefined ? Number(data.analyses_left) : 5;
-            const serverSlots = data.project_slots !== undefined ? Number(data.project_slots) : (serverPlan === "free" ? 1 : serverPlan === "prime" ? 5 : serverPlan === "apex" ? 60 : 1);
+    const roleJson = currentUser.displayName || '{"name":"User","role":"Business Analyst"}';
+    let parsedRole = "Business Analyst";
+    let userName = "User";
+    try {
+      const p = JSON.parse(roleJson);
+      parsedRole = p.role || "Business Analyst";
+      userName = p.name || "User";
+    } catch (e) {}
 
-            // Update states if they differ from localStorage cache
-            setUserPlan(serverPlan);
-            setAnalysesLeft(serverCredits);
-            setProjectSlots(serverSlots);
-
-            // Save back to localStorage cache
-            localStorage.setItem(`bi-plan-${uid}`, serverPlan);
-            localStorage.setItem(`bi-credits-${uid}`, String(serverCredits));
-            localStorage.setItem(`bi-slots-${uid}`, String(serverSlots));
-          }
+    // 2. Fetch/Sync from Express server DB for cross-device plan details
+    if (uid !== "admin-uid" && uid !== "anonymous") {
+      fetch("/api/admin/users/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: uid,
+          email: currentUser.email || "no-email@dataglance.com",
+          name: userName,
+          role: parsedRole,
+          plan: plan
         })
-        .catch((err) => {
-          console.warn("Supabase fetch on login failed:", err);
-        });
+      })
+      .then((res) => {
+        if (!res.ok) throw new Error("Sync failed");
+        return res.json();
+      })
+      .then((data) => {
+        const serverPlan = data.plan as PlanType || "free";
+        const serverCredits = data.analysesLeft !== undefined ? Number(data.analysesLeft) : 5;
+        const serverSlots = data.projectSlots !== undefined ? Number(data.projectSlots) : (serverPlan === "free" ? 1 : serverPlan === "prime" ? 5 : serverPlan === "apex" ? 60 : 2);
+
+        setUserPlan(serverPlan);
+        setAnalysesLeft(serverCredits);
+        setProjectSlots(serverSlots);
+
+        localStorage.setItem(`bi-plan-${uid}`, serverPlan);
+        localStorage.setItem(`bi-credits-${uid}`, String(serverCredits));
+        localStorage.setItem(`bi-slots-${uid}`, String(serverSlots));
+      })
+      .catch((err) => {
+        console.warn("Express user sync failed, using local fallback:", err);
+      });
     }
   }, [currentUser]);
 
-  // Synchronize master bi-global-users database for Admin Console visibility
+  // Synchronize master user updates on role or plan changes
   useEffect(() => {
     if (!currentUser) return;
     const uid = currentUser.uid;
     const email = currentUser.email || "no-email@dataglance.com";
-    
-    // Skip system admin
     if (email === "admin@dataglance.com") return;
 
     const roleJson = currentUser.displayName || '{"name":"User","role":"Business Analyst"}';
@@ -432,72 +445,20 @@ export default function App() {
       userName = p.name || "User";
     } catch (e) {}
 
-    const stored = localStorage.getItem("bi-global-users");
-    let list: any[] = stored ? JSON.parse(stored) : [];
-
-    const existingIdx = list.findIndex(u => u.userId === uid);
-    let changed = false;
-    let userObj: any = null;
-
-    if (existingIdx === -1) {
-      userObj = {
-        userId: uid,
-        email,
-        name: userName,
-        role: parsedRole,
-        plan: userPlan,
-        analysesLeft,
-        projectSlots,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      list.push(userObj);
-      changed = true;
-    } else {
-      userObj = { ...list[existingIdx] };
-      if (userObj.plan !== userPlan) {
-        userObj.plan = userPlan;
-        changed = true;
-      }
-      if (userObj.analysesLeft !== analysesLeft) {
-        userObj.analysesLeft = analysesLeft;
-        changed = true;
-      }
-      if (userObj.projectSlots !== projectSlots) {
-        userObj.projectSlots = projectSlots;
-        changed = true;
-      }
-      if (changed) {
-        userObj.updatedAt = new Date().toISOString();
-        list[existingIdx] = userObj;
-      }
-    }
-
-    if (changed) {
-      localStorage.setItem("bi-global-users", JSON.stringify(list));
-    }
-
-    // Always push updates to Supabase if configured to ensure other browsers see it
-    if (hasSupabaseConfig && uid !== "admin-uid" && uid !== "anonymous") {
-      try {
-        supabase
-          .from("users")
-          .upsert({
-            user_id: uid,
-            email,
-            name: userName,
-            role: parsedRole,
-            plan: userPlan,
-            analyses_left: analysesLeft,
-            project_slots: projectSlots,
-            updated_at: new Date().toISOString()
-          })
-          .catch(err => {
-            console.warn("Supabase user sync failed:", err);
-          });
-      } catch (e) {
-        console.warn("Supabase sync trigger failed:", e);
-      }
+    if (uid !== "admin-uid" && uid !== "anonymous") {
+      fetch("/api/admin/users/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: uid,
+          email,
+          name: userName,
+          role: parsedRole,
+          plan: userPlan
+        })
+      }).catch(err => {
+        console.warn("Background user sync failed:", err);
+      });
     }
   }, [currentUser, userPlan, analysesLeft, projectSlots]);
 
@@ -518,17 +479,34 @@ export default function App() {
   };
 
   const syncUserPlan = async () => {
-    if (!currentUser || currentUser.uid === "anonymous" || currentUser.uid === "admin-uid" || !hasSupabaseConfig) return;
+    if (!currentUser || currentUser.uid === "anonymous" || currentUser.uid === "admin-uid") return;
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("user_id", currentUser.uid)
-        .single();
-      if (data && !error) {
+      const email = currentUser.email || "no-email@dataglance.com";
+      const roleJson = currentUser.displayName || '{"name":"User","role":"Business Analyst"}';
+      let parsedRole = "Business Analyst";
+      let userName = "User";
+      try {
+        const p = JSON.parse(roleJson);
+        parsedRole = p.role || "Business Analyst";
+        userName = p.name || "User";
+      } catch (e) {}
+
+      const response = await fetch("/api/admin/users/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: currentUser.uid,
+          email,
+          name: userName,
+          role: parsedRole
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
         const serverPlan = data.plan as PlanType || "free";
-        const serverCredits = data.analyses_left !== undefined ? Number(data.analyses_left) : 5;
-        const serverSlots = data.project_slots !== undefined ? Number(data.project_slots) : (serverPlan === "free" ? 1 : serverPlan === "prime" ? 5 : serverPlan === "apex" ? 60 : 1);
+        const serverCredits = data.analysesLeft !== undefined ? Number(data.analysesLeft) : 5;
+        const serverSlots = data.projectSlots !== undefined ? Number(data.projectSlots) : (serverPlan === "free" ? 1 : serverPlan === "prime" ? 5 : serverPlan === "apex" ? 60 : 2);
 
         setUserPlan(serverPlan);
         setAnalysesLeft(serverCredits);
@@ -726,22 +704,37 @@ export default function App() {
       isFirstMount.current = false;
       const savedDataset = localStorage.getItem("bi-dataset");
       if (savedDataset) {
-        return;
+        try {
+          const parsed = JSON.parse(savedDataset);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setDataset(parsed);
+            
+            const savedColumns = localStorage.getItem("bi-columns");
+            if (savedColumns) setColumns(JSON.parse(savedColumns));
+            
+            const savedMeasures = localStorage.getItem("bi-measures");
+            if (savedMeasures) setMeasures(JSON.parse(savedMeasures));
+            
+            const savedWidgets = localStorage.getItem("bi-widgets");
+            if (savedWidgets) setWidgets(JSON.parse(savedWidgets));
+
+            setIsCustomDataset(true);
+            return;
+          }
+        } catch (e) {
+          console.warn("Failed to load saved dataset:", e);
+        }
       }
+      
+      // Default empty state when no saved dataset exists
+      setDataset([]);
+      setColumns([]);
+      setMeasures([]);
+      setWidgets([]);
+      setIsCustomDataset(true);
+      setIsImportOpen(true);
     }
-
-    if (isCustomDataset && dataset.length > 0 && columns.length > 0) {
-      return;
-    }
-
-    const template = getTemplateForRole(activeRole);
-    setDataset(template.data);
-    setColumns(template.columns);
-    setMeasures(template.measures);
-    setIsCustomDataset(false);
-    setAiAnalysisResult(null);
-    setWidgets(getDefaultWidgets(activeRole, template.measures));
-  }, [activeRole, isCustomDataset, dataset.length, columns.length]);
+  }, []);
 
   const handleImportCustomData = (importedData: any[], importedColumns: ColumnMetadata[], cleanSummary?: string | null) => {
     setDataset(importedData);
@@ -1097,6 +1090,7 @@ export default function App() {
                   onUpdateWidget={handleUpdateWidget}
                   onReorderWidgets={handleReorderWidgets}
                   onDownloadReport={handleDownloadReport}
+                  onOpenImport={() => setIsImportOpen(true)}
                 />
               )}
 

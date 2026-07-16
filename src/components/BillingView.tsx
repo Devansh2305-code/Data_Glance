@@ -64,16 +64,13 @@ export default function BillingView({
   const [loadingTransactions, setLoadingTransactions] = useState(false);
 
   const fetchTransactions = async () => {
-    if (!hasSupabaseConfig || !currentUser || currentUser.uid === "anonymous" || currentUser.uid === "admin-uid") return;
+    if (!currentUser || currentUser.uid === "anonymous" || currentUser.uid === "admin-uid") return;
     setLoadingTransactions(true);
     try {
-      const { data, error } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("user_id", currentUser.uid)
-        .order("created_at", { ascending: false });
-      if (!error && data) {
-        setTransactions(data);
+      const response = await fetch(`/api/admin/payments/user/${currentUser.uid}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTransactions(data || []);
       }
     } catch (e) {
       console.warn("Failed to fetch payments:", e);
@@ -193,68 +190,45 @@ export default function BillingView({
       return;
     }
 
-    if (hasSupabaseConfig && currentUser && currentUser.uid !== "anonymous" && currentUser.uid !== "admin-uid") {
-      if (!transactionRef || transactionRef.trim().length < 6) {
-        setCheckoutError("Please enter a valid UPI transaction reference code (minimum 6 characters).");
-        return;
+    if (!transactionRef || transactionRef.trim().length < 6) {
+      setCheckoutError("Please enter a valid UPI transaction reference code (minimum 6 characters).");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const response = await fetch("/api/admin/payments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          userId: currentUser.uid,
+          email: currentUser.email || "no-email@dataglance.com",
+          plan: checkoutModal.plan,
+          amount: checkoutModal.cost,
+          upiId,
+          transactionRef: transactionRef.trim()
+        })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to submit verification request.");
       }
 
-      setIsProcessing(true);
-      try {
-        const { error } = await supabase
-          .from("payments")
-          .insert({
-            user_id: currentUser.uid,
-            email: currentUser.email || "no-email@dataglance.com",
-            plan: checkoutModal.plan,
-            amount: checkoutModal.cost,
-            upi_id: upiId,
-            transaction_ref: transactionRef.trim(),
-            status: "pending"
-          });
+      setSuccessMessage(`Upgrade request submitted successfully! Admin will verify Ref ID: ${transactionRef.trim()} and update your plan details.`);
+      setTransactionRef("");
+      fetchTransactions();
 
-        if (error) {
-          if (error.message && error.message.includes("unique")) {
-            throw new Error("This Transaction Reference number has already been submitted for verification.");
-          }
-          throw error;
-        }
-
-        setSuccessMessage(`Upgrade request submitted successfully! Admin will verify Ref ID: ${transactionRef.trim()} and update your plan details.`);
-        setTransactionRef("");
-        fetchTransactions();
-
-        setTimeout(() => {
-          handleCloseCheckout();
-        }, 3000);
-      } catch (err: any) {
-        console.error("Supabase insert error:", err);
-        setCheckoutError(err.message || "Failed to submit verification request. Please try again.");
-      } finally {
-        setIsProcessing(false);
-      }
-    } else {
-      // Mock flow
-      setIsProcessing(true);
       setTimeout(() => {
-        setIsProcessing(false);
-        
-        let newSlots = projectSlots;
-        if (checkoutModal.isSlotPurchase) {
-          newSlots = projectSlots + 1;
-        } else if (checkoutModal.plan === "prime") {
-          newSlots = Math.max(projectSlots, 5);
-        } else if (checkoutModal.plan === "apex") {
-          newSlots = Math.max(projectSlots, 60);
-        }
-
-        onUpgradePlan(checkoutModal.plan, newSlots);
-        setSuccessMessage(`[MOCK] Payment of Rs. ${checkoutModal.cost} received! Plan status successfully updated.`);
-        
-        setTimeout(() => {
-          handleCloseCheckout();
-        }, 1500);
-      }, 2000);
+        handleCloseCheckout();
+      }, 3000);
+    } catch (err: any) {
+      console.error("Billing upgrade error:", err);
+      setCheckoutError(err.message || "Failed to submit verification request. Please try again.");
+    } finally {
+      setIsProcessing(false);
     }
   };
 

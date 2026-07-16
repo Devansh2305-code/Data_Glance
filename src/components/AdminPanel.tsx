@@ -66,14 +66,16 @@ const AdminPanel: React.FC = () => {
   };
 
   const fetchPayments = async () => {
-    if (!hasSupabaseConfig) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("payments")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
+      const response = await fetch("/api/admin/payments", {
+        headers: { "x-admin-key": ADMIN_KEY }
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to load payment requests.");
+      }
+      const data = await response.json();
       setPayments(data || []);
       setError(null);
     } catch (e: any) {
@@ -88,37 +90,26 @@ const AdminPanel: React.FC = () => {
     if (!confirm(`Are you sure you want to APPROVE payment Ref: ${payment.transaction_ref} for ${payment.email}? This will activate the ${payment.plan} plan.`)) return;
     setLoading(true);
     try {
-      // 1. Update payment status in database
-      const { error: pErr } = await supabase
-        .from("payments")
-        .update({ status: "approved" })
-        .eq("id", payment.id);
-      if (pErr) throw pErr;
-
-      // 2. Calculate slots/credits
-      const plan = payment.plan;
-      const slots = plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 1;
-      const credits = plan === "free" ? 5 : 999999;
-
-      // 3. Update user plan profile in users table
-      const { error: uErr } = await supabase
-        .from("users")
-        .update({
-          plan,
-          project_slots: slots,
-          analyses_left: credits,
-          updated_at: new Date().toISOString()
-        })
-        .eq("user_id", payment.user_id);
-      if (uErr) throw uErr;
-
+      const response = await fetch(`/api/admin/payments/${payment.id}/approve`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": ADMIN_KEY
+        }
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to approve payment.");
+      }
+      
       // Update local storage settings if matching currently logged in admin user just in case
-      localStorage.setItem(`bi-plan-${payment.user_id}`, plan);
+      const slots = payment.plan === "free" ? 1 : payment.plan === "prime" ? 5 : payment.plan === "apex" ? 60 : 2;
+      const credits = payment.plan === "free" ? 5 : 999999;
+      localStorage.setItem(`bi-plan-${payment.user_id}`, payment.plan);
       localStorage.setItem(`bi-credits-${payment.user_id}`, String(credits));
       localStorage.setItem(`bi-slots-${payment.user_id}`, String(slots));
 
-      addAuditLog("PAYMENT_APPROVED", payment.user_id, { plan, ref: payment.transaction_ref });
-      setSuccess(`Payment approved! ${payment.email} upgraded to ${plan}.`);
+      setSuccess(`Payment approved! ${payment.email} upgraded to ${payment.plan}.`);
       fetchPayments();
     } catch (err: any) {
       console.error(err);
@@ -132,13 +123,18 @@ const AdminPanel: React.FC = () => {
     if (!confirm(`Are you sure you want to REJECT payment Ref: ${payment.transaction_ref} for ${payment.email}?`)) return;
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from("payments")
-        .update({ status: "rejected" })
-        .eq("id", payment.id);
-      if (error) throw error;
+      const response = await fetch(`/api/admin/payments/${payment.id}/reject`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": ADMIN_KEY
+        }
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to reject payment.");
+      }
 
-      addAuditLog("PAYMENT_REJECTED", payment.user_id, { plan: payment.plan, ref: payment.transaction_ref });
       setSuccess(`Payment reference rejected.`);
       fetchPayments();
     } catch (err: any) {
@@ -148,69 +144,33 @@ const AdminPanel: React.FC = () => {
     }
   };
 
-  // Fetch users from localStorage master list and Firestore
+  // Fetch users from Express API
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      let list: UserPlan[] = [];
-
-      if (hasSupabaseConfig) {
-        try {
-          const { data: usersData, error: fsErr } = await supabase
-            .from("users")
-            .select("*");
-          if (fsErr) throw fsErr;
-          
-          const dbUsers: UserPlan[] = (usersData || []).map((data: any) => ({
-            userId: data.user_id,
-            email: data.email || "",
-            plan: data.plan || "free",
-            createdAt: data.created_at || new Date().toISOString(),
-            updatedAt: data.updated_at || new Date().toISOString(),
-            features: {
-              maxDatasets: data.project_slots || 1,
-              maxRows: 100000,
-              aiAnalysisCount: data.analyses_left || 5,
-              customReports: data.plan !== "free",
-              advancedCharts: data.plan !== "free",
-              exportFormats: ["csv", "xlsx"]
-            }
-          } as any));
-          
-          list = dbUsers;
-          localStorage.setItem("bi-global-users", JSON.stringify(list));
-        } catch (fsErr) {
-          console.warn("Supabase user fetch failed:", fsErr);
-          const stored = localStorage.getItem("bi-global-users");
-          list = stored ? JSON.parse(stored) : [];
+      const response = await fetch("/api/admin/users", {
+        headers: { "x-admin-key": ADMIN_KEY }
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to fetch users.");
+      }
+      const data = await response.json();
+      const list = (data.users || []).map((u: any) => ({
+        userId: u.userId,
+        email: u.email || "",
+        plan: u.plan || "free",
+        createdAt: u.createdAt || new Date().toISOString(),
+        updatedAt: u.updatedAt || new Date().toISOString(),
+        features: u.features || {
+          maxDatasets: u.plan === "free" ? 1 : u.plan === "prime" ? 5 : u.plan === "apex" ? 60 : 2,
+          maxRows: 100000,
+          aiAnalysisCount: u.plan === "free" ? 5 : 999999,
+          customReports: u.plan !== "free",
+          advancedCharts: u.plan !== "free",
+          exportFormats: ["csv", "xlsx"]
         }
-      } else {
-        const stored = localStorage.getItem("bi-global-users");
-        list = stored ? JSON.parse(stored) : [];
-      }
-
-      if (list.length === 0 && !db) {
-        const initialMock: UserPlan[] = [
-          {
-            userId: "mock-user-1",
-            email: "analyst@company.com",
-            plan: "free",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            features: {
-              maxDatasets: 5,
-              maxRows: 10000,
-              aiAnalysisCount: 5,
-              customReports: false,
-              advancedCharts: false,
-              exportFormats: ["csv", "xlsx"]
-            }
-          }
-        ];
-        localStorage.setItem("bi-global-users", JSON.stringify(initialMock));
-        list = initialMock;
-      }
-
+      }));
       setUsers(list);
       setError(null);
     } catch (err: any) {
@@ -220,22 +180,19 @@ const AdminPanel: React.FC = () => {
     }
   };
 
-  // Fetch analytics calculated dynamically
+  // Fetch analytics calculated dynamically on server
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
-      const storedUsers = localStorage.getItem("bi-global-users");
-      const list = storedUsers ? JSON.parse(storedUsers) : [];
-      
-      setAnalytics({
-        totalUsers: list.length,
-        activeUsers: Math.max(list.length, 1),
-        totalDatasets: list.length * 2 + 3,
-        totalRowsProcessed: list.length * 15000 + 45000,
-        aiAnalysisExecuted: list.reduce((acc: number, u: any) => acc + (5 - (u.analysesLeft || 5)), 0),
-        reportsGenerated: list.length * 3 + 2,
-        timestamp: new Date().toISOString(),
+      const response = await fetch("/api/admin/analytics", {
+        headers: { "x-admin-key": ADMIN_KEY }
       });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to fetch analytics.");
+      }
+      const data = await response.json();
+      setAnalytics(data);
       setError(null);
     } catch (err: any) {
       setError(err.message);
@@ -248,23 +205,15 @@ const AdminPanel: React.FC = () => {
   const fetchAuditLogs = async () => {
     setLoading(true);
     try {
-      const storedLogs = localStorage.getItem("bi-system-audit-logs");
-      if (storedLogs) {
-        setAuditLogs(JSON.parse(storedLogs));
-      } else {
-        const initialLogs: AuditLog[] = [
-          {
-            id: "initial-log",
-            action: "SYSTEM_BOOT",
-            userId: "system",
-            changes: { message: "System terminal initialized." },
-            timestamp: new Date().toISOString(),
-            status: "success"
-          }
-        ];
-        localStorage.setItem("bi-system-audit-logs", JSON.stringify(initialLogs));
-        setAuditLogs(initialLogs);
+      const response = await fetch("/api/admin/audit-logs", {
+        headers: { "x-admin-key": ADMIN_KEY }
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to fetch audit logs.");
       }
+      const data = await response.json();
+      setAuditLogs(data.logs || []);
       setError(null);
     } catch (err: any) {
       setError(err.message);
@@ -277,42 +226,15 @@ const AdminPanel: React.FC = () => {
   const fetchSystemConfig = async () => {
     setLoading(true);
     try {
-      let config: SystemConfiguration = {
-        maintenanceMode: false,
-        maxFileSize: 100,
-        enableAiAnalysis: true,
-        enableCustomReports: true,
-        defaultTimeout: 300
-      };
-
-      const stored = localStorage.getItem("bi-system-config");
-      if (stored) {
-        config = JSON.parse(stored);
+      const response = await fetch("/api/admin/config", {
+        headers: { "x-admin-key": ADMIN_KEY }
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to fetch config.");
       }
-
-      if (hasSupabaseConfig) {
-        try {
-          const { data, error: fsErr } = await supabase
-            .from("system_config")
-            .select("*")
-            .eq("id", 1)
-            .single();
-          if (data && !fsErr) {
-            config = {
-              maintenanceMode: data.maintenance_mode !== undefined ? data.maintenance_mode : config.maintenanceMode,
-              maxFileSize: data.max_file_size !== undefined ? data.max_file_size : config.maxFileSize,
-              enableAiAnalysis: data.enable_ai_analysis !== undefined ? data.enable_ai_analysis : config.enableAiAnalysis,
-              enableCustomReports: data.enable_custom_reports !== undefined ? data.enable_custom_reports : config.enableCustomReports,
-              defaultTimeout: data.default_timeout !== undefined ? data.default_timeout : config.defaultTimeout
-            };
-            localStorage.setItem("bi-system-config", JSON.stringify(config));
-          }
-        } catch (fsErr) {
-          console.warn("Supabase config fetch failed:", fsErr);
-        }
-      }
-
-      setSystemConfig(config);
+      const data = await response.json();
+      setSystemConfig(data);
       setError(null);
     } catch (err: any) {
       setError(err.message);
@@ -321,74 +243,31 @@ const AdminPanel: React.FC = () => {
     }
   };
 
-  // Create new user in localStorage and Firestore
+  // Create new user in server DB
   const handleCreateUser = async () => {
     try {
       if (!newUserForm.userId || !newUserForm.email) {
         throw new Error("Please specify both user ID and email.");
       }
 
-      const stored = localStorage.getItem("bi-global-users");
-      let list: any[] = stored ? JSON.parse(stored) : [];
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": ADMIN_KEY
+        },
+        body: JSON.stringify({
+          userId: newUserForm.userId,
+          email: newUserForm.email,
+          plan: newUserForm.plan
+        })
+      });
 
-      if (list.some(u => u.userId === newUserForm.userId || u.email === newUserForm.email)) {
-        throw new Error("User with this ID or email already exists.");
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to create user.");
       }
 
-      const plan = newUserForm.plan as PlanType;
-      const slots = plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 1;
-      const credits = plan === "free" ? 5 : 999999;
-
-      const newUser: any = {
-        userId: newUserForm.userId,
-        email: newUserForm.email,
-        name: newUserForm.userId,
-        role: "Business Analyst",
-        plan,
-        analysesLeft: credits,
-        projectSlots: slots,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        features: {
-          maxDatasets: slots,
-          maxRows: 100000,
-          aiAnalysisCount: credits,
-          customReports: plan !== "free",
-          advancedCharts: plan !== "free",
-          exportFormats: ["csv", "xlsx"]
-        }
-      };
-
-      list.push(newUser);
-      localStorage.setItem("bi-global-users", JSON.stringify(list));
-
-      // Set direct localStorage session configurations for user UID
-      localStorage.setItem(`bi-plan-${newUserForm.userId}`, plan);
-      localStorage.setItem(`bi-credits-${newUserForm.userId}`, String(credits));
-      localStorage.setItem(`bi-slots-${newUserForm.userId}`, String(slots));
-
-      // Push to Supabase if database is active
-      if (hasSupabaseConfig) {
-        try {
-          const { error: fsErr } = await supabase
-            .from("users")
-            .upsert({
-              user_id: newUserForm.userId,
-              email: newUserForm.email,
-              name: newUserForm.userId,
-              role: "Business Analyst",
-              plan,
-              analyses_left: credits,
-              project_slots: slots,
-              updated_at: new Date().toISOString()
-            });
-          if (fsErr) throw fsErr;
-        } catch (fsErr) {
-          console.warn("Supabase user creation failed:", fsErr);
-        }
-      }
-
-      addAuditLog("USER_CREATED", newUserForm.userId, { plan, email: newUserForm.email });
       setSuccess("User created successfully");
       setShowUserModal(false);
       setNewUserForm({ userId: "", email: "", plan: "free" });
@@ -398,52 +277,26 @@ const AdminPanel: React.FC = () => {
     }
   };
 
-  // Update user plan in localStorage and Firestore
+  // Update user plan in server DB
   const handleUpdatePlan = async () => {
     if (!selectedUser) return;
     try {
-      const stored = localStorage.getItem("bi-global-users");
-      let list: any[] = stored ? JSON.parse(stored) : [];
+      const response = await fetch(`/api/admin/users/${selectedUser.userId}/plan`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": ADMIN_KEY
+        },
+        body: JSON.stringify({
+          plan: editPlan
+        })
+      });
 
-      const idx = list.findIndex(u => u.userId === selectedUser.userId);
-      if (idx === -1) throw new Error("User not found.");
-
-      const plan = editPlan;
-      const slots = plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 1;
-      const credits = plan === "free" ? 5 : 999999;
-
-      const oldPlan = list[idx].plan;
-      list[idx].plan = plan;
-      list[idx].projectSlots = slots;
-      list[idx].analysesLeft = credits;
-      list[idx].updatedAt = new Date().toISOString();
-
-      localStorage.setItem("bi-global-users", JSON.stringify(list));
-
-      // Direct write
-      localStorage.setItem(`bi-plan-${selectedUser.userId}`, plan);
-      localStorage.setItem(`bi-credits-${selectedUser.userId}`, String(credits));
-      localStorage.setItem(`bi-slots-${selectedUser.userId}`, String(slots));
-
-      // Push to Supabase if database is active
-      if (hasSupabaseConfig) {
-        try {
-          const { error: fsErr } = await supabase
-            .from("users")
-            .update({
-              plan,
-              project_slots: slots,
-              analyses_left: credits,
-              updated_at: new Date().toISOString()
-            })
-            .eq("user_id", selectedUser.userId);
-          if (fsErr) throw fsErr;
-        } catch (fsErr) {
-          console.warn("Supabase plan update failed:", fsErr);
-        }
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update plan.");
       }
 
-      addAuditLog("PLAN_UPDATED", selectedUser.userId, { from: oldPlan, to: plan });
       setSuccess("Plan updated successfully");
       setShowEditModal(false);
       fetchUsers();
@@ -452,36 +305,22 @@ const AdminPanel: React.FC = () => {
     }
   };
 
-  // Delete user from localStorage and Firestore
+  // Delete user from server DB
   const handleDeleteUser = async (userId: string) => {
     if (!confirm("Are you sure you want to delete this user?")) return;
     try {
-      const stored = localStorage.getItem("bi-global-users");
-      let list: any[] = stored ? JSON.parse(stored) : [];
-
-      const filtered = list.filter(u => u.userId !== userId);
-      localStorage.setItem("bi-global-users", JSON.stringify(filtered));
-
-      // Session cleanup
-      localStorage.removeItem(`bi-plan-${userId}`);
-      localStorage.removeItem(`bi-credits-${userId}`);
-      localStorage.removeItem(`bi-slots-${userId}`);
-      localStorage.removeItem(`bi-projects-${userId}`);
-
-      // Delete from Supabase if database is active
-      if (hasSupabaseConfig) {
-        try {
-          const { error: fsErr } = await supabase
-            .from("users")
-            .delete()
-            .eq("user_id", userId);
-          if (fsErr) throw fsErr;
-        } catch (fsErr) {
-          console.warn("Supabase user deletion failed:", fsErr);
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "DELETE",
+        headers: {
+          "x-admin-key": ADMIN_KEY
         }
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete user.");
       }
 
-      addAuditLog("USER_DELETED", userId, {});
       setSuccess("User deleted successfully");
       fetchUsers();
     } catch (err: any) {
@@ -493,47 +332,34 @@ const AdminPanel: React.FC = () => {
   const handleUpdateConfig = async () => {
     if (!systemConfig) return;
     try {
-      localStorage.setItem("bi-system-config", JSON.stringify(systemConfig));
-      
-      const payload: any = {
-        maintenanceMode: systemConfig.maintenanceMode,
-        maxFileSize: systemConfig.maxFileSize,
-        enableAiAnalysis: systemConfig.enableAiAnalysis,
-        enableCustomReports: systemConfig.enableCustomReports,
-        defaultTimeout: systemConfig.defaultTimeout
-      };
-
-      if (newAdminPassword.trim()) {
-        if (newAdminPassword.trim().length < 4) {
-          throw new Error("Administrative passcode must be at least 4 characters.");
-        }
-        localStorage.setItem("bi-admin-password", newAdminPassword.trim());
-        payload.adminPassword = newAdminPassword.trim();
-        addAuditLog("ADMIN_PASSWORD_CHANGED", "admin", { message: "Administrative passcode successfully updated." });
-        setNewAdminPassword("");
+      if (newAdminPassword.trim() && newAdminPassword.trim().length < 4) {
+        throw new Error("Administrative passcode must be at least 4 characters.");
       }
 
-      if (hasSupabaseConfig) {
-        try {
-          const { error: fsErr } = await supabase
-            .from("system_config")
-            .upsert({
-              id: 1,
-              maintenance_mode: systemConfig.maintenanceMode,
-              max_file_size: systemConfig.maxFileSize,
-              enable_ai_analysis: systemConfig.enableAiAnalysis,
-              enable_custom_reports: systemConfig.enableCustomReports,
-              default_timeout: systemConfig.defaultTimeout,
-              admin_password: payload.adminPassword || undefined,
-              updated_at: new Date().toISOString()
-            });
-          if (fsErr) throw fsErr;
-        } catch (fsErr) {
-          console.warn("Supabase config save failed:", fsErr);
-        }
+      const response = await fetch("/api/admin/config", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": ADMIN_KEY
+        },
+        body: JSON.stringify({
+          maintenanceMode: systemConfig.maintenanceMode,
+          maxFileSize: systemConfig.maxFileSize,
+          enableAiAnalysis: systemConfig.enableAiAnalysis,
+          enableCustomReports: systemConfig.enableCustomReports,
+          defaultTimeout: systemConfig.defaultTimeout,
+          adminPassword: newAdminPassword.trim() || undefined
+        })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update config.");
       }
 
-      addAuditLog("CONFIG_UPDATED", "system", systemConfig);
+      const data = await response.json();
+      setSystemConfig(data);
+      setNewAdminPassword("");
       setSuccess("Configuration updated successfully");
     } catch (err: any) {
       setError(err.message);

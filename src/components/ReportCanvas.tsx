@@ -61,6 +61,7 @@ interface ReportCanvasProps {
   onUpdateWidget: (id: string, updated: Partial<Widget>) => void;
   onReorderWidgets?: (widgets: Widget[]) => void;
   onDownloadReport: (filters: Record<string, string>) => void;
+  onOpenImport?: () => void;
 }
 
 const PALETTE_COLORS: Record<string, string[]> = {
@@ -100,7 +101,8 @@ export default function ReportCanvas({
   onRemoveWidget,
   onUpdateWidget,
   onReorderWidgets,
-  onDownloadReport
+  onDownloadReport,
+  onOpenImport
 }: ReportCanvasProps) {
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -491,6 +493,55 @@ export default function ReportCanvas({
 
     return aggregated;
   };
+
+  if (dataset.length === 0) {
+    return (
+      <div className="flex-1 overflow-y-auto p-8 flex items-center justify-center bg-slate-50 dark:bg-slate-950/20 h-full">
+        <div className="max-w-2xl w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 sm:p-12 text-center shadow-2xl relative overflow-hidden transition-all duration-350">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+          <div className="flex justify-center mb-6">
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-650 text-white p-5 rounded-2xl shadow-xl shadow-blue-500/10 dark:shadow-none">
+              <FileSpreadsheet className="w-10 h-10 animate-bounce duration-3000" />
+            </div>
+          </div>
+
+          <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            Awaiting Data Feed
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mt-3.5 leading-relaxed max-w-md mx-auto">
+            Your business analytics canvas starts here. Load your CSV or Excel spreadsheets to configure custom KPIs, charts, and trigger AI executive briefings.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-8 text-left">
+            <div className="p-4 bg-slate-50 dark:bg-slate-950/40 border border-slate-150 dark:border-slate-800/80 rounded-2xl">
+              <span className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest block mb-1 font-mono">Step 1</span>
+              <h4 className="text-xs font-bold text-slate-855 dark:text-slate-200">Import CSV / XLSX</h4>
+              <p className="text-[11px] text-slate-450 dark:text-slate-500 mt-1">Upload local files or paste raw CSV rows.</p>
+            </div>
+            <div className="p-4 bg-slate-50 dark:bg-slate-950/40 border border-slate-150 dark:border-slate-800/80 rounded-2xl">
+              <span className="text-[10px] font-bold text-purple-500 dark:text-purple-400 uppercase tracking-widest block mb-1 font-mono">Step 2</span>
+              <h4 className="text-xs font-bold text-slate-855 dark:text-slate-200">Model Measures</h4>
+              <p className="text-[11px] text-slate-450 dark:text-slate-500 mt-1">Create formulas like Sum, Average, or custom ratios.</p>
+            </div>
+            <div className="p-4 bg-slate-50 dark:bg-slate-950/40 border border-slate-150 dark:border-slate-800/80 rounded-2xl">
+              <span className="text-[10px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-widest block mb-1 font-mono">Step 3</span>
+              <h4 className="text-xs font-bold text-slate-855 dark:text-slate-200">Deploy Visuals</h4>
+              <p className="text-[11px] text-slate-450 dark:text-slate-500 mt-1">Generate bar, line, radar, or KPI dashboard grids.</p>
+            </div>
+          </div>
+
+          <button
+            onClick={onOpenImport}
+            className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-500 hover:to-indigo-600 text-white font-bold rounded-2xl shadow-xl shadow-blue-500/20 active:scale-98 transition duration-200 cursor-pointer text-sm"
+          >
+            Launch CSV/Excel Importer
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div id="report-canvas-container" className="flex h-full relative">

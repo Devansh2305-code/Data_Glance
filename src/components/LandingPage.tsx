@@ -92,44 +92,38 @@ export default function LandingPage({ onMockLogin }: LandingPageProps) {
       setIsLoading(true);
       
       const checkPasscode = async () => {
-        let activeAdminPassword = "admin123";
-        
-        if (hasSupabaseConfig) {
-          try {
-            const { data, error } = await supabase
-              .from("system_config")
-              .select("admin_password")
-              .eq("id", 1)
-              .single();
-            if (data && !error && data.admin_password) {
-              activeAdminPassword = data.admin_password;
-            }
-          } catch (e) {
-            console.warn("Could not retrieve admin password from Supabase:", e);
+        try {
+          const response = await fetch("/api/admin/login", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ password })
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || "Invalid administrative credentials.");
           }
-        } else {
-          activeAdminPassword = localStorage.getItem("bi-admin-password") || "admin123";
-        }
-        
-        if (email !== "admin@dataglance.com" || password !== activeAdminPassword) {
-          setError("Invalid administrative credentials.");
+
+          const data = await response.json();
+          localStorage.setItem("admin-key", data.token);
+          
+          onMockLogin({
+            uid: "admin-uid",
+            email: "admin@dataglance.com",
+            displayName: JSON.stringify({ name: "System Admin", role: "admin" })
+          });
+          
+          setSuccess("Admin Authorized! Accessing secure system terminal...");
+          setTimeout(() => {
+            handleCloseModal();
+          }, 1000);
+        } catch (err: any) {
+          setError(err.message || "Invalid administrative credentials.");
+        } finally {
           setIsLoading(false);
-          return;
         }
-        
-        setIsLoading(false);
-        localStorage.setItem("admin-key", "dg-admin-session-active");
-        
-        onMockLogin({
-          uid: "admin-uid",
-          email: "admin@dataglance.com",
-          displayName: JSON.stringify({ name: "System Admin", role: "admin" })
-        });
-        
-        setSuccess("Admin Authorized! Accessing secure system terminal...");
-        setTimeout(() => {
-          handleCloseModal();
-        }, 1000);
       };
       
       checkPasscode();
