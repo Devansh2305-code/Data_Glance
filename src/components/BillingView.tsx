@@ -217,7 +217,7 @@ export default function BillingView({
         throw new Error(data.error || "Failed to submit verification request.");
       }
 
-      setSuccessMessage(`Upgrade request submitted successfully! Admin will verify Ref ID: ${transactionRef.trim()} and update your plan details.`);
+      setSuccessMessage("Verification is in process, confirmation mail will reach you soon.");
       setTransactionRef("");
       fetchTransactions();
 
@@ -419,11 +419,11 @@ export default function BillingView({
 
             {/* Checkout Form */}
             <form onSubmit={handlePaySubmit} className="space-y-4">
-              {hasSupabaseConfig && currentUser && currentUser.uid !== "anonymous" && (
+              {currentUser && currentUser.uid !== "anonymous" && currentUser.uid !== "admin-uid" && (
                 <div className="text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-100 dark:border-slate-850 leading-relaxed text-left space-y-1">
                   <p className="font-bold text-slate-700 dark:text-slate-350">How to pay:</p>
                   <p>1. Open your UPI App (GPay, PhonePe, Paytm, etc.).</p>
-                  <p>2. Send the exact amount to: <code className="font-mono text-blue-600 dark:text-blue-400 font-bold">dataglance@okaxis</code></p>
+                  <p>2. Send the exact amount to: <code className="font-mono text-blue-600 dark:text-blue-400 font-bold">7678695012@ptyes</code></p>
                   <p>3. Copy the UPI Transaction Ref ID / UTN and enter it below.</p>
                 </div>
               )}
@@ -432,7 +432,7 @@ export default function BillingView({
                 <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">UPI Address ID</label>
                 <input
                   type="text"
-                  placeholder="username@okaxis"
+                  placeholder="username@bank"
                   value={upiId}
                   onChange={(e) => setUpiId(e.target.value)}
                   className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 focus:border-blue-600 rounded-lg text-xs outline-none transition"
@@ -440,7 +440,7 @@ export default function BillingView({
                 />
               </div>
 
-              {hasSupabaseConfig && currentUser && currentUser.uid !== "anonymous" && (
+              {currentUser && currentUser.uid !== "anonymous" && currentUser.uid !== "admin-uid" && (
                 <div>
                   <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Transaction Ref / UTN Number</label>
                   <input
@@ -468,7 +468,7 @@ export default function BillingView({
                 ) : (
                   <>
                     <Lock className="w-3.5 h-3.5" />
-                    <span>{hasSupabaseConfig && currentUser && currentUser.uid !== "anonymous" ? "Submit Reference Code" : `Pay Rs. ${checkoutModal.cost}`}</span>
+                    <span>{currentUser && currentUser.uid !== "anonymous" && currentUser.uid !== "admin-uid" ? "Submit Reference Code" : `Pay Rs. ${checkoutModal.cost}`}</span>
                   </>
                 )}
               </button>
@@ -478,7 +478,7 @@ export default function BillingView({
       )}
 
       {/* Transaction History */}
-      {hasSupabaseConfig && currentUser && currentUser.uid !== "anonymous" && currentUser.uid !== "admin-uid" && (
+      {currentUser && currentUser.uid !== "anonymous" && currentUser.uid !== "admin-uid" && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
             <div>

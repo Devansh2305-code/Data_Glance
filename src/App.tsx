@@ -38,7 +38,9 @@ import {
   PieChart,
   Loader,
   X,
-  Sparkles
+  Sparkles,
+  User,
+  Phone
 } from "lucide-react";
 
 const getDefaultWidgets = (role: Role, availableMeasures: Measure[]): Widget[] => {
@@ -346,6 +348,7 @@ export default function App() {
   const [aiAnalysisResult, setAiAnalysisResult] = useState<AIAnalysisResult | null>(null);
 
   const [aiCleanMessage, setAiCleanMessage] = useState<string | null>(null);
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const isFirstMount = useRef(true);
 
   const [userPlan, setUserPlan] = useState<PlanType>("free");
@@ -1042,9 +1045,53 @@ export default function App() {
 
             <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden xs:block" />
 
-            <div className="hidden xs:flex flex-col items-end leading-none text-right">
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 max-w-28 truncate">{userName}</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 max-w-28 truncate">{currentUser?.email}</span>
+            <div className="relative">
+              <button
+                id="btn-profile-dropdown"
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700 transition cursor-pointer select-none"
+              >
+                <User className="w-4 h-4 text-blue-500" />
+                <span className="text-xs font-bold hidden md:inline max-w-24 truncate">{userName}</span>
+              </button>
+
+              {isProfileDropdownOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40 cursor-default" 
+                    onClick={() => setIsProfileDropdownOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-2 z-50 animate-fadeIn text-left">
+                    <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
+                      <p className="text-xs text-slate-400 dark:text-slate-500">Signed in as</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate mt-0.5">{userName}</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">{currentUser?.email}</p>
+                    </div>
+
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setIsProfileDropdownOpen(false);
+                          alert(`User Details:\nName: ${userName}\nEmail: ${currentUser?.email || "No email"}\nActive Role: ${activeRole}\nPlan Tier: ${userPlan.toUpperCase()}\nProject Slots: ${projectSlots}\nAI Analyses Left: ${analysesLeft}`);
+                        }}
+                        className="w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-2 cursor-pointer"
+                      >
+                        <User className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Profile Details</span>
+                      </button>
+
+                      <a
+                        href="tel:7678695012"
+                        onClick={() => setIsProfileDropdownOpen(false)}
+                        className="w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-2 cursor-pointer border-t border-slate-100 dark:border-slate-800 mt-1 pt-2"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">Contact Support</span>
+                      </a>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <button
