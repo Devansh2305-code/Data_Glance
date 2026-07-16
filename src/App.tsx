@@ -282,9 +282,9 @@ const getDefaultWidgets = (role: Role, availableMeasures: Measure[]): Widget[] =
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(() => {
-    if (!hasFirebaseConfig) {
-      const saved = localStorage.getItem("bi-mock-user");
-      return saved ? JSON.parse(saved) : null;
+    const saved = localStorage.getItem("bi-mock-user");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
     }
     return null;
   });
@@ -585,17 +585,23 @@ export default function App() {
     }
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setAuthLoading(false);
-      if (user && user.displayName) {
-        try {
-          const profile = JSON.parse(user.displayName);
-          if (profile.role) {
-            setActiveRole(profile.role);
-          }
-        } catch (e) {
-          // Plain text profile display name from Google Sign-In
+      const savedMock = localStorage.getItem("bi-mock-user");
+      if (user) {
+        setCurrentUser(user);
+        setAuthLoading(false);
+        if (user.displayName) {
+          try {
+            const profile = JSON.parse(user.displayName);
+            if (profile.role) {
+              setActiveRole(profile.role);
+            }
+          } catch (e) {}
         }
+      } else if (!savedMock) {
+        setCurrentUser(null);
+        setAuthLoading(false);
+      } else {
+        setAuthLoading(false);
       }
     });
 
@@ -650,7 +656,9 @@ export default function App() {
 
   const handleLogout = async () => {
     localStorage.removeItem("admin-key");
+    localStorage.removeItem("bi-mock-user");
     setIsAdminMode(false);
+    setCurrentUser(null);
     
     if (hasFirebaseConfig && auth) {
       try {
@@ -658,9 +666,6 @@ export default function App() {
       } catch (err) {
         console.error("Sign out failed:", err);
       }
-    } else {
-      localStorage.removeItem("bi-mock-user");
-      setCurrentUser(null);
     }
   };
 
@@ -677,6 +682,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("bi-active-role", activeRole);
   }, [activeRole]);
+
+  useEffect(() => {
+    localStorage.setItem("bi-current-view", currentView);
+  }, [currentView]);
 
   useEffect(() => {
     localStorage.setItem("bi-is-custom-dataset", isCustomDataset ? "true" : "false");
