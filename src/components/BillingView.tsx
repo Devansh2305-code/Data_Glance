@@ -67,7 +67,7 @@ export default function BillingView({
     if (!currentUser || currentUser.uid === "anonymous" || currentUser.uid === "admin-uid") return;
     setLoadingTransactions(true);
     try {
-      const response = await fetch(`/api/admin/payments/user/${currentUser.uid}`);
+      const response = await fetch(`/api/admin/payments-user?userId=${currentUser.uid}`);
       if (response.ok) {
         const data = await response.json();
         setTransactions(data || []);

@@ -90,12 +90,15 @@ const AdminPanel: React.FC = () => {
     if (!confirm(`Are you sure you want to APPROVE payment Ref: ${payment.transaction_ref} for ${payment.email}? This will activate the ${payment.plan} plan.`)) return;
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/payments/${payment.id}/approve`, {
+      const response = await fetch(`/api/admin/payments-approve`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-admin-key": ADMIN_KEY
-        }
+        },
+        body: JSON.stringify({
+          id: payment.id
+        })
       });
       if (!response.ok) {
         const data = await response.json();
@@ -123,12 +126,15 @@ const AdminPanel: React.FC = () => {
     if (!confirm(`Are you sure you want to REJECT payment Ref: ${payment.transaction_ref} for ${payment.email}?`)) return;
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/payments/${payment.id}/reject`, {
+      const response = await fetch(`/api/admin/payments-reject`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-admin-key": ADMIN_KEY
-        }
+        },
+        body: JSON.stringify({
+          id: payment.id
+        })
       });
       if (!response.ok) {
         const data = await response.json();
@@ -281,13 +287,14 @@ const AdminPanel: React.FC = () => {
   const handleUpdatePlan = async () => {
     if (!selectedUser) return;
     try {
-      const response = await fetch(`/api/admin/users/${selectedUser.userId}/plan`, {
-        method: "PUT",
+      const response = await fetch(`/api/admin/users-update-plan`, {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-admin-key": ADMIN_KEY
         },
         body: JSON.stringify({
+          userId: selectedUser.userId,
           plan: editPlan
         })
       });
@@ -309,11 +316,15 @@ const AdminPanel: React.FC = () => {
   const handleDeleteUser = async (userId: string) => {
     if (!confirm("Are you sure you want to delete this user?")) return;
     try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
-        method: "DELETE",
+      const response = await fetch(`/api/admin/users-delete`, {
+        method: "POST",
         headers: {
+          "Content-Type": "application/json",
           "x-admin-key": ADMIN_KEY
-        }
+        },
+        body: JSON.stringify({
+          userId
+        })
       });
 
       if (!response.ok) {

@@ -395,7 +395,7 @@ export default function App() {
 
     // 2. Fetch/Sync from Express server DB for cross-device plan details
     if (uid !== "admin-uid" && uid !== "anonymous") {
-      fetch("/api/admin/users/sync", {
+      fetch("/api/admin/users-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -446,7 +446,7 @@ export default function App() {
     } catch (e) {}
 
     if (uid !== "admin-uid" && uid !== "anonymous") {
-      fetch("/api/admin/users/sync", {
+      fetch("/api/admin/users-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -491,7 +491,7 @@ export default function App() {
         userName = p.name || "User";
       } catch (e) {}
 
-      const response = await fetch("/api/admin/users/sync", {
+      const response = await fetch("/api/admin/users-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

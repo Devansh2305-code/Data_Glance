@@ -77,39 +77,60 @@ adminRouter.post("/login", (req: Request, res: Response) => {
   }
 });
 
-// PUBLIC: Sync user details on register/login
-adminRouter.post("/users/sync", (req: Request, res: Response) => {
+// PUBLIC: Sync user details on register/login (Original and Flat paths)
+const handleUsersSync = (req: Request, res: Response) => {
   try {
     const { userId, email, name, role, plan } = req.body;
 
-    if (!userId || !email) {
-      return res.status(400).json({ error: "Missing required fields: userId, email" });
+    if (!userId) {
+      return res.status(400).json({ error: "Missing required field: userId" });
     }
 
-    // Find existing user in database
     const users = getUsers();
     let user = users.find((u) => u.userId === userId);
 
     if (!user) {
-      // Create new user record
       const initialPlan = (plan as PlanType) || "free";
       user = saveUser({
         userId,
-        email,
-        name,
+        email: email || "",
+        name: name || userId,
         role: role || "Business Analyst",
         plan: initialPlan,
-      });
+        analysesLeft: initialPlan === "free" ? 5 : 999999,
+        projectSlots: initialPlan === "free" ? 1 : initialPlan === "prime" ? 5 : initialPlan === "apex" ? 60 : 2,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        features: {
+          maxDatasets: initialPlan === "free" ? 1 : initialPlan === "prime" ? 5 : initialPlan === "apex" ? 60 : 2,
+          maxRows: 100000,
+          aiAnalysisCount: initialPlan === "free" ? 5 : 999999,
+          customReports: initialPlan !== "free",
+          advancedCharts: initialPlan !== "free",
+          exportFormats: ["csv", "xlsx"]
+        }
+      } as any);
       addAuditLog("USER_REGISTERED", userId, userId, { email, role });
     } else {
-      // Sync names/roles if updated
-      const needsSave = (name && user.name !== name) || (role && user.role !== role);
+      let needsSave = false;
+      if (name && user.name !== name) {
+        user.name = name;
+        needsSave = true;
+      }
+      if (role && user.role !== role) {
+        user.role = role;
+        needsSave = true;
+      }
+      if (plan && user.plan !== plan) {
+        user.plan = plan;
+        const slots = plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 2;
+        const credits = plan === "free" ? 5 : 999999;
+        user.projectSlots = slots;
+        user.analysesLeft = credits;
+        needsSave = true;
+      }
       if (needsSave) {
-        user = saveUser({
-          ...user,
-          name: name || user.name,
-          role: role || user.role,
-        });
+        saveUser(user);
       }
     }
 
@@ -117,7 +138,10 @@ adminRouter.post("/users/sync", (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+};
+
+adminRouter.post("/users/sync", handleUsersSync);
+adminRouter.post("/users-sync", handleUsersSync);
 
 // PUBLIC: User submit payment (UPI)
 adminRouter.post("/payments", (req: Request, res: Response) => {
@@ -128,7 +152,6 @@ adminRouter.post("/payments", (req: Request, res: Response) => {
       return res.status(400).json({ error: "Missing required billing details." });
     }
 
-    // Check if transactionRef already exists
     const payments = getPayments();
     const duplicate = payments.find((p) => p.transaction_ref === transactionRef.trim());
     if (duplicate) {
@@ -153,6 +176,20 @@ adminRouter.post("/payments", (req: Request, res: Response) => {
 });
 
 // PUBLIC: User retrieve their own payments
+adminRouter.get("/payments-user", (req: Request, res: Response) => {
+  try {
+    const userId = req.query.userId as string;
+    if (!userId) {
+      return res.status(400).json({ error: "Missing userId parameter" });
+    }
+    const payments = getPayments();
+    const userPayments = payments.filter((p) => p.user_id === userId);
+    res.json(userPayments);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 adminRouter.get("/payments/user/:userId", (req: Request, res: Response) => {
   try {
     const userId = req.params.userId;
@@ -174,25 +211,27 @@ adminRouter.get("/payments", verifyAdmin, (req: Request, res: Response) => {
   }
 });
 
-// ADMIN: Approve payment
-adminRouter.post("/payments/:id/approve", verifyAdmin, (req: Request, res: Response) => {
+// ADMIN: Approve payment (Original & Flat endpoints)
+const handlePaymentApprove = (req: Request, res: Response) => {
   try {
+    const id = req.params.id || req.body.id;
+    if (!id) {
+      return res.status(400).json({ error: "Missing payment id" });
+    }
     const payments = getPayments();
-    const payment = payments.find((p) => p.id === req.params.id);
+    const payment = payments.find((p) => String(p.id) === String(id));
     if (!payment) {
       return res.status(404).json({ error: "Payment request not found" });
     }
 
-    // 1. Update status
     payment.status = "approved";
     savePayment(payment);
 
-    // 2. Fetch user and upgrade
     const users = getUsers();
     const user = users.find((u) => u.userId === payment.user_id);
     if (user) {
       const plan = payment.plan as PlanType;
-      const slots = plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 2; // core is 2 slots by default
+      const slots = plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 2;
       const credits = plan === "free" ? 5 : 999999;
 
       user.plan = plan;
@@ -206,13 +245,20 @@ adminRouter.post("/payments/:id/approve", verifyAdmin, (req: Request, res: Respo
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+};
 
-// ADMIN: Reject payment
-adminRouter.post("/payments/:id/reject", verifyAdmin, (req: Request, res: Response) => {
+adminRouter.post("/payments/:id/approve", verifyAdmin, handlePaymentApprove);
+adminRouter.post("/payments-approve", verifyAdmin, handlePaymentApprove);
+
+// ADMIN: Reject payment (Original & Flat endpoints)
+const handlePaymentReject = (req: Request, res: Response) => {
   try {
+    const id = req.params.id || req.body.id;
+    if (!id) {
+      return res.status(400).json({ error: "Missing payment id" });
+    }
     const payments = getPayments();
-    const payment = payments.find((p) => p.id === req.params.id);
+    const payment = payments.find((p) => String(p.id) === String(id));
     if (!payment) {
       return res.status(404).json({ error: "Payment request not found" });
     }
@@ -225,7 +271,10 @@ adminRouter.post("/payments/:id/reject", verifyAdmin, (req: Request, res: Respon
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+};
+
+adminRouter.post("/payments/:id/reject", verifyAdmin, handlePaymentReject);
+adminRouter.post("/payments-reject", verifyAdmin, handlePaymentReject);
 
 // ADMIN: Retrieve all users
 adminRouter.get("/users", verifyAdmin, (req: Request, res: Response) => {
@@ -280,11 +329,14 @@ adminRouter.post("/users", verifyAdmin, (req: Request, res: Response) => {
   }
 });
 
-// ADMIN: Update manual user plan
-adminRouter.put("/users/:userId/plan", verifyAdmin, (req: Request, res: Response) => {
+// ADMIN: Update manual user plan (Original & Flat endpoints)
+const handleUpdateUserPlan = (req: Request, res: Response) => {
   try {
+    const userId = req.params.userId || req.body.userId;
     const { plan } = req.body;
-    const userId = req.params.userId;
+    if (!userId || !plan) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
 
     const users = getUsers();
     const user = users.find((u) => u.userId === userId);
@@ -305,12 +357,18 @@ adminRouter.put("/users/:userId/plan", verifyAdmin, (req: Request, res: Response
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+};
 
-// ADMIN: Delete user
-adminRouter.delete("/users/:userId", verifyAdmin, (req: Request, res: Response) => {
+adminRouter.put("/users/:userId/plan", verifyAdmin, handleUpdateUserPlan);
+adminRouter.post("/users-update-plan", verifyAdmin, handleUpdateUserPlan);
+
+// ADMIN: Delete user (Original & Flat endpoints)
+const handleUserDelete = (req: Request, res: Response) => {
   try {
-    const userId = req.params.userId;
+    const userId = req.params.userId || req.body.userId;
+    if (!userId) {
+      return res.status(400).json({ error: "Missing userId" });
+    }
     const users = getUsers();
     const user = users.find((u) => u.userId === userId);
     if (!user) {
@@ -323,7 +381,10 @@ adminRouter.delete("/users/:userId", verifyAdmin, (req: Request, res: Response) 
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+};
+
+adminRouter.delete("/users/:userId", verifyAdmin, handleUserDelete);
+adminRouter.post("/users-delete", verifyAdmin, handleUserDelete);
 
 // ADMIN: Analytics and statistics
 adminRouter.get("/analytics", verifyAdmin, (req: Request, res: Response) => {
