@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import { UserPlan, SystemConfiguration, AuditLog, PlanType } from "../src/types";
 
-const DB_DIR = path.resolve(process.cwd(), "data");
+const isVercel = !!process.env.VERCEL || process.env.NODE_ENV === "production";
+const DB_DIR = isVercel ? "/tmp" : path.resolve(process.cwd(), "data");
 const DB_FILE = path.resolve(DB_DIR, "db.json");
 
 interface DbSchema {
@@ -36,49 +37,55 @@ const defaultDb: DbSchema = {
   ],
 };
 
+let memoryDb: DbSchema = { ...defaultDb };
+
 function ensureDbExists() {
-  if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(defaultDb, null, 2), "utf8");
-  } else {
-    try {
-      // Validate JSON formatting
-      const content = fs.readFileSync(DB_FILE, "utf8");
-      JSON.parse(content);
-    } catch (e) {
-      console.warn("db.json was corrupted. Re-initializing with default structure:", e);
-      fs.writeFileSync(DB_FILE, JSON.stringify(defaultDb, null, 2), "utf8");
+  try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
     }
+    if (!fs.existsSync(DB_FILE)) {
+      fs.writeFileSync(DB_FILE, JSON.stringify(defaultDb, null, 2), "utf8");
+    } else {
+      try {
+        const content = fs.readFileSync(DB_FILE, "utf8");
+        JSON.parse(content);
+      } catch (e) {
+        fs.writeFileSync(DB_FILE, JSON.stringify(defaultDb, null, 2), "utf8");
+      }
+    }
+  } catch (err) {
+    console.warn("Write access to database file denied, falling back to memory:", err);
   }
 }
 
 export function getDb(): DbSchema {
   ensureDbExists();
   try {
-    const content = fs.readFileSync(DB_FILE, "utf8");
-    const data = JSON.parse(content);
-    // Ensure all arrays are present
-    return {
-      adminPassword: data.adminPassword || "admin123",
-      users: data.users || [],
-      payments: data.payments || [],
-      systemConfig: data.systemConfig || defaultDb.systemConfig,
-      auditLogs: data.auditLogs || [],
-    };
+    if (fs.existsSync(DB_FILE)) {
+      const content = fs.readFileSync(DB_FILE, "utf8");
+      const data = JSON.parse(content);
+      return {
+        adminPassword: data.adminPassword || "admin123",
+        users: data.users || [],
+        payments: data.payments || [],
+        systemConfig: data.systemConfig || defaultDb.systemConfig,
+        auditLogs: data.auditLogs || [],
+      };
+    }
   } catch (e) {
-    console.error("Error reading database:", e);
-    return defaultDb;
+    console.error("Error reading database file:", e);
   }
+  return memoryDb;
 }
 
 export function saveDb(data: DbSchema) {
+  memoryDb = data;
   ensureDbExists();
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf8");
   } catch (e) {
-    console.error("Error writing database:", e);
+    console.error("Error writing database file:", e);
   }
 }
 
