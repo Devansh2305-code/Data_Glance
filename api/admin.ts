@@ -1,19 +1,377 @@
 import express, { Request, Response } from "express";
-import { UserPlan, AdminAnalytics, SystemConfiguration, AuditLog, PlanType } from "../src/types";
-import {
-  getAdminPassword,
-  saveAdminPassword,
-  getUsers,
-  saveUser,
-  deleteUser,
-  getPayments,
-  savePayment,
-  getSystemConfig,
-  saveSystemConfig,
-  getAuditLogs,
-  addAuditLog
-} from "./dbStore";
+import fs from "fs";
+import path from "path";
 
+// ============ TYPES ============
+export type Role = "CMO" | "Business Analyst" | "CFO" | "Sales Director" | "HR Specialist" | "CEO";
+
+export interface ColumnMetadata {
+  name: string;
+  type: "number" | "string" | "date";
+}
+
+export interface Measure {
+  id: string;
+  name: string;
+  formula: string;
+  expressionType: "simple" | "custom";
+  columnName?: string;
+  aggregation?: "SUM" | "AVG" | "COUNT" | "MIN" | "MAX";
+  format: "number" | "currency" | "percent" | "integer";
+  isCustom: boolean;
+  description: string;
+  category?: string;
+}
+
+export type ChartType = "kpi" | "bar" | "line" | "area" | "pie" | "scatter" | "radar" | "funnel" | "combo" | "table";
+
+export interface WidgetConfig {
+  xAxis: string;
+  yAxisMeasures: string[];
+  colorTheme: string;
+  showLegend: boolean;
+  showGrid: boolean;
+  limit?: number;
+}
+
+export interface Widget {
+  id: string;
+  title: string;
+  type: ChartType;
+  config: WidgetConfig;
+  gridSpan?: "col-span-1" | "col-span-2" | "col-span-3" | "col-span-4" | "col-span-5" | "col-span-6";
+}
+
+export interface AIInsight {
+  title: string;
+  description: string;
+  impact: "high" | "medium" | "low";
+  metricAffected: string;
+  decreaseDetected?: boolean;
+  rootCause?: string;
+  resolution?: string;
+}
+
+export interface AISuggestedKPI {
+  name: string;
+  formula: string;
+  description: string;
+}
+
+export interface AIRecommendedChart {
+  title: string;
+  chartType: ChartType;
+  xAxis: string;
+  yAxis: string;
+  reason: string;
+}
+
+export interface AIAnalysisResult {
+  insights: AIInsight[];
+  suggestedKPIs: AISuggestedKPI[];
+  recommendedCharts: AIRecommendedChart[];
+}
+
+export type PlanType = "free" | "core" | "prime" | "apex";
+
+export interface SavedProject {
+  id: string;
+  name: string;
+  dataset: any[];
+  columns: ColumnMetadata[];
+  measures: Measure[];
+  widgets: Widget[];
+  updatedAt: string;
+}
+
+export interface UserPlan {
+  userId: string;
+  email: string;
+  plan: PlanType;
+  createdAt: string;
+  updatedAt: string;
+  features: {
+    maxDatasets: number;
+    maxRows: number;
+    aiAnalysisCount: number;
+    customReports: boolean;
+    advancedCharts: boolean;
+    exportFormats: string[];
+  };
+}
+
+export interface PlanConfiguration {
+  free: {
+    maxDatasets: number;
+    maxRows: number;
+    aiAnalysisCount: number;
+    customReports: boolean;
+    advancedCharts: boolean;
+    exportFormats: string[];
+  };
+  pro: {
+    maxDatasets: number;
+    maxRows: number;
+    aiAnalysisCount: number;
+    customReports: boolean;
+    advancedCharts: boolean;
+    exportFormats: string[];
+  };
+  enterprise: {
+    maxDatasets: number;
+    maxRows: number;
+    aiAnalysisCount: number;
+    customReports: boolean;
+    advancedCharts: boolean;
+    exportFormats: string[];
+  };
+}
+
+export interface AdminAnalytics {
+  totalUsers: number;
+  activeUsers: number;
+  totalDatasets: number;
+  totalRowsProcessed: number;
+  aiAnalysisExecuted: number;
+  reportsGenerated: number;
+  timestamp: string;
+}
+
+export interface SystemConfiguration {
+  maintenanceMode: boolean;
+  maxFileSize: number;
+  enableAiAnalysis: boolean;
+  enableCustomReports: boolean;
+  defaultTimeout: number;
+  geminiApiKey?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  userId: string;
+  targetUser?: string;
+  changes: Record<string, any>;
+  timestamp: string;
+  status: "success" | "failed";
+}
+
+// ============ FILE DATABASE MANAGER ============
+const isVercel = !!process.env.VERCEL || process.env.NODE_ENV === "production";
+const DB_DIR = isVercel ? "/tmp" : path.resolve(process.cwd(), "data");
+const DB_FILE = path.resolve(DB_DIR, "db.json");
+
+interface DbSchema {
+  adminPassword?: string;
+  users: any[];
+  payments: any[];
+  systemConfig: SystemConfiguration;
+  auditLogs: AuditLog[];
+}
+
+const defaultDb: DbSchema = {
+  adminPassword: "admin123",
+  users: [],
+  payments: [],
+  systemConfig: {
+    maintenanceMode: false,
+    maxFileSize: 100,
+    enableAiAnalysis: true,
+    enableCustomReports: true,
+    defaultTimeout: 300,
+  },
+  auditLogs: [
+    {
+      id: "log-system-init",
+      action: "SYSTEM_BOOT",
+      userId: "system",
+      changes: { message: "JSON database backend system initialized." },
+      timestamp: new Date().toISOString(),
+      status: "success",
+    },
+  ],
+};
+
+let memoryDb: DbSchema = { ...defaultDb };
+
+function ensureDbExists() {
+  try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(DB_FILE)) {
+      fs.writeFileSync(DB_FILE, JSON.stringify(defaultDb, null, 2), "utf8");
+    } else {
+      try {
+        const content = fs.readFileSync(DB_FILE, "utf8");
+        JSON.parse(content);
+      } catch (e) {
+        fs.writeFileSync(DB_FILE, JSON.stringify(defaultDb, null, 2), "utf8");
+      }
+    }
+  } catch (err) {
+    console.warn("Write access to database file denied, falling back to memory:", err);
+  }
+}
+
+function getDb(): DbSchema {
+  ensureDbExists();
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const content = fs.readFileSync(DB_FILE, "utf8");
+      const data = JSON.parse(content);
+      return {
+        adminPassword: data.adminPassword || "admin123",
+        users: data.users || [],
+        payments: data.payments || [],
+        systemConfig: data.systemConfig || defaultDb.systemConfig,
+        auditLogs: data.auditLogs || [],
+      };
+    }
+  } catch (e) {
+    console.error("Error reading database file:", e);
+  }
+  return memoryDb;
+}
+
+function saveDb(data: DbSchema) {
+  memoryDb = data;
+  ensureDbExists();
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf8");
+  } catch (e) {
+    console.error("Error writing database file:", e);
+  }
+}
+
+function getAdminPassword(): string {
+  return getDb().adminPassword || "admin123";
+}
+
+function saveAdminPassword(password: string) {
+  const db = getDb();
+  db.adminPassword = password;
+  saveDb(db);
+}
+
+function getUsers(): any[] {
+  return getDb().users;
+}
+
+function saveUser(user: any) {
+  const db = getDb();
+  const idx = db.users.findIndex((u) => u.userId === user.userId);
+  
+  const plan = user.plan || "free";
+  const slots = plan === "free" ? 1 : plan === "prime" ? 5 : plan === "apex" ? 60 : 2;
+  const credits = plan === "free" ? 5 : 999999;
+
+  const userRecord = {
+    userId: user.userId,
+    email: user.email,
+    name: user.name || user.userId,
+    role: user.role || "Business Analyst",
+    plan: plan,
+    analysesLeft: user.analysesLeft !== undefined ? user.analysesLeft : credits,
+    projectSlots: user.projectSlots !== undefined ? user.projectSlots : slots,
+    createdAt: user.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    features: {
+      maxDatasets: slots,
+      maxRows: 100000,
+      aiAnalysisCount: credits,
+      customReports: plan !== "free",
+      advancedCharts: plan !== "free",
+      exportFormats: ["csv", "xlsx", "pdf", "json"],
+    },
+  };
+
+  if (idx !== -1) {
+    db.users[idx] = { ...db.users[idx], ...userRecord, updatedAt: new Date().toISOString() };
+  } else {
+    db.users.push(userRecord);
+  }
+  saveDb(db);
+  return idx !== -1 ? db.users[idx] : userRecord;
+}
+
+function deleteUser(userId: string) {
+  const db = getDb();
+  const filtered = db.users.filter((u) => u.userId !== userId);
+  db.users = filtered;
+  saveDb(db);
+  return true;
+}
+
+function getPayments(): any[] {
+  return getDb().payments;
+}
+
+function savePayment(payment: any) {
+  const db = getDb();
+  const idx = db.payments.findIndex((p) => p.id === payment.id);
+
+  const paymentRecord = {
+    id: payment.id || `pay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    user_id: payment.user_id,
+    email: payment.email,
+    plan: payment.plan,
+    amount: payment.amount,
+    upi_id: payment.upi_id,
+    transaction_ref: payment.transaction_ref,
+    status: payment.status || "pending",
+    created_at: payment.created_at || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (idx !== -1) {
+    db.payments[idx] = { ...db.payments[idx], ...paymentRecord };
+  } else {
+    db.payments.push(paymentRecord);
+  }
+  saveDb(db);
+  return idx !== -1 ? db.payments[idx] : paymentRecord;
+}
+
+function getSystemConfig(): SystemConfiguration {
+  return getDb().systemConfig;
+}
+
+function saveSystemConfig(config: SystemConfiguration) {
+  const db = getDb();
+  db.systemConfig = { ...db.systemConfig, ...config };
+  saveDb(db);
+}
+
+function getAuditLogs(): AuditLog[] {
+  return getDb().auditLogs;
+}
+
+function addAuditLog(
+  action: string,
+  userId: string,
+  targetUser?: string,
+  changes: Record<string, any> = {},
+  status: "success" | "failed" = "success"
+) {
+  const db = getDb();
+  const log: AuditLog = {
+    id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    action,
+    userId,
+    targetUser,
+    changes,
+    timestamp: new Date().toISOString(),
+    status,
+  };
+  db.auditLogs.push(log);
+  if (db.auditLogs.length > 200) {
+    db.auditLogs.shift();
+  }
+  saveDb(db);
+}
+
+// ============ EXPRESS SUB-APP & ROUTER ============
 const app = express();
 app.use(express.json());
 
@@ -29,9 +387,9 @@ const planConfigs = {
     exportFormats: ["csv", "xlsx"],
   },
   core: {
-    maxDatasets: 2, // starts with 2, can purchase more
+    maxDatasets: 2,
     maxRows: 100000,
-    aiAnalysisCount: 999999, // unlimited
+    aiAnalysisCount: 999999,
     customReports: true,
     advancedCharts: true,
     exportFormats: ["csv", "xlsx", "pdf", "json"],
@@ -39,22 +397,21 @@ const planConfigs = {
   prime: {
     maxDatasets: 5,
     maxRows: 1000000,
-    aiAnalysisCount: 999999, // unlimited
+    aiAnalysisCount: 999999,
     customReports: true,
     advancedCharts: true,
     exportFormats: ["csv", "xlsx", "pdf", "json"],
   },
   apex: {
     maxDatasets: 60,
-    maxRows: -1, // unlimited
-    aiAnalysisCount: 999999, // unlimited
+    maxRows: -1,
+    aiAnalysisCount: 999999,
     customReports: true,
     advancedCharts: true,
     exportFormats: ["csv", "xlsx", "pdf", "json", "sql"],
   },
 };
 
-// Middleware to verify admin access using the session token header
 const verifyAdmin = (req: Request, res: Response, next: Function) => {
   const adminKey = req.headers["x-admin-key"];
   if (adminKey !== "dg-admin-session-active") {
@@ -69,7 +426,7 @@ adminRouter.post("/login", (req: Request, res: Response) => {
     const { password } = req.body;
     const currentPass = getAdminPassword();
     if (password === currentPass) {
-      addAuditLog("ADMIN_LOGIN_SUCCESS", "admin", undefined, { ip: req.ip });
+      addAuditLog("ADMIN_LOGIN_SUCCESS", "admin", undefined, { ip: req.headers["x-forwarded-for"] || req.socket?.remoteAddress });
       return res.json({ success: true, token: "dg-admin-session-active" });
     } else {
       addAuditLog("ADMIN_LOGIN_FAILED", "admin", undefined, { passwordAttempted: "••••" }, "failed");
@@ -80,7 +437,7 @@ adminRouter.post("/login", (req: Request, res: Response) => {
   }
 });
 
-// PUBLIC: Sync user details on register/login (Original and Flat paths)
+// PUBLIC: Sync user details on register/login
 const handleUsersSync = (req: Request, res: Response) => {
   try {
     const { userId, email, name, role, plan } = req.body;
@@ -103,16 +460,8 @@ const handleUsersSync = (req: Request, res: Response) => {
         analysesLeft: initialPlan === "free" ? 5 : 999999,
         projectSlots: initialPlan === "free" ? 1 : initialPlan === "prime" ? 5 : initialPlan === "apex" ? 60 : 2,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        features: {
-          maxDatasets: initialPlan === "free" ? 1 : initialPlan === "prime" ? 5 : initialPlan === "apex" ? 60 : 2,
-          maxRows: 100000,
-          aiAnalysisCount: initialPlan === "free" ? 5 : 999999,
-          customReports: initialPlan !== "free",
-          advancedCharts: initialPlan !== "free",
-          exportFormats: ["csv", "xlsx"]
-        }
-      } as any);
+        updatedAt: new Date().toISOString()
+      });
       addAuditLog("USER_REGISTERED", userId, userId, { email, role });
     } else {
       let needsSave = false;
@@ -214,7 +563,7 @@ adminRouter.get("/payments", verifyAdmin, (req: Request, res: Response) => {
   }
 });
 
-// ADMIN: Approve payment (Original & Flat endpoints)
+// ADMIN: Approve payment
 const handlePaymentApprove = (req: Request, res: Response) => {
   try {
     const id = req.params.id || req.body.id;
@@ -253,7 +602,7 @@ const handlePaymentApprove = (req: Request, res: Response) => {
 adminRouter.post("/payments/:id/approve", verifyAdmin, handlePaymentApprove);
 adminRouter.post("/payments-approve", verifyAdmin, handlePaymentApprove);
 
-// ADMIN: Reject payment (Original & Flat endpoints)
+// ADMIN: Reject payment
 const handlePaymentReject = (req: Request, res: Response) => {
   try {
     const id = req.params.id || req.body.id;
@@ -332,7 +681,7 @@ adminRouter.post("/users", verifyAdmin, (req: Request, res: Response) => {
   }
 });
 
-// ADMIN: Update manual user plan (Original & Flat endpoints)
+// ADMIN: Update manual user plan
 const handleUpdateUserPlan = (req: Request, res: Response) => {
   try {
     const userId = req.params.userId || req.body.userId;
@@ -365,7 +714,7 @@ const handleUpdateUserPlan = (req: Request, res: Response) => {
 adminRouter.put("/users/:userId/plan", verifyAdmin, handleUpdateUserPlan);
 adminRouter.post("/users-update-plan", verifyAdmin, handleUpdateUserPlan);
 
-// ADMIN: Delete user (Original & Flat endpoints)
+// ADMIN: Delete user
 const handleUserDelete = (req: Request, res: Response) => {
   try {
     const userId = req.params.userId || req.body.userId;
@@ -393,15 +742,14 @@ adminRouter.post("/users-delete", verifyAdmin, handleUserDelete);
 adminRouter.get("/analytics", verifyAdmin, (req: Request, res: Response) => {
   try {
     const users = getUsers();
-    const payments = getPayments();
-    const analytics: AdminAnalytics = {
+    const analytics = {
       totalUsers: users.length,
       activeUsers: users.length,
-      totalDatasets: users.length * 2,
-      totalRowsProcessed: users.length * 5000,
-      aiAnalysisExecuted: payments.filter((p) => p.status === "approved").length * 5,
-      reportsGenerated: users.length * 3,
-      timestamp: new Date().toISOString(),
+      totalDatasets: users.length * 2 + 1,
+      totalRowsProcessed: users.length * 15000 + 45000,
+      aiAnalysisExecuted: users.reduce((acc, u) => acc + (u.plan === "free" ? (5 - u.analysesLeft) : 10), 0),
+      reportsGenerated: users.length * 3 + 2,
+      timestamp: new Date().toISOString()
     };
     res.json(analytics);
   } catch (error: any) {
@@ -468,4 +816,3 @@ app.use("/api/admin", adminRouter);
 app.use("/", adminRouter);
 
 export default app;
-
