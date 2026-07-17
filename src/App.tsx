@@ -656,6 +656,9 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    const confirmLogout = window.confirm("Are you sure you want to log out of your DataGlance workspace?");
+    if (!confirmLogout) return;
+
     localStorage.removeItem("admin-key");
     localStorage.removeItem("bi-mock-user");
     setIsAdminMode(false);
