@@ -22,8 +22,7 @@ import {
   generateAnalystData, ANALYST_COLUMNS,
   generateCFOData, CFO_COLUMNS,
   generateSalesData, SALES_COLUMNS,
-  generateHRData, HR_COLUMNS,
-  generateSaaSData, SAAS_COLUMNS
+  generateHRData, HR_COLUMNS
 } from "./utils";
 import { downloadHTMLReport } from "./reportGenerator";
 import { onAuthStateChanged, signOut, updateProfile } from "firebase/auth";
