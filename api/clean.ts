@@ -36,9 +36,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { data, columns } = req.body || {};
+    const { data, sampleRows, columns } = req.body || {};
+    const inputData = data || sampleRows;
 
-    if (!data || !Array.isArray(data) || data.length === 0) {
+    if (!inputData || !Array.isArray(inputData) || inputData.length === 0) {
       return res.status(400).json({ error: "No data provided for cleaning." });
     }
 
@@ -54,16 +55,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Take up to 20 rows of sample to generate rules
-    const sampleSize = Math.min(data.length, 20);
-    const dataSample = data.slice(0, sampleSize);
+    const sampleSize = Math.min(inputData.length, 20);
+    const dataSample = inputData.slice(0, sampleSize);
 
     const prompt = `
       You are an expert Data Engineer and Data Quality Auditor.
       You are auditing and designing a cleaning recipe for a raw uploaded dataset. Your goal is to detect if the data has formatting flaws, mixed types, inconsistent cases, leading/trailing white spaces, or raw string numbers (like currency symbols "$", "€", or percent "%" signs or thousand separator commas), and to output structured cleaning instructions.
 
       Here is metadata about the active dataset:
-      - Columns uploaded: ${JSON.stringify(columns || Object.keys(data[0] || {}))}
-      - Total records in dataset: ${data.length}
+      - Columns uploaded: ${JSON.stringify(columns || Object.keys(inputData[0] || {}))}
+      - Total records in dataset: ${inputData.length}
       
       Here is a sample of ${sampleSize} rows from the dataset:
       ${JSON.stringify(dataSample, null, 2)}

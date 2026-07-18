@@ -3,6 +3,10 @@
     {
       "source": "/api/admin/:path*",
       "destination": "/api/admin"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
   ]
 }

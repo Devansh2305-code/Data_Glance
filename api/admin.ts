@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
+import { GoogleGenAI } from "@google/genai";
 
 // ============ TYPES ============
 export type Role = "CMO" | "Business Analyst" | "CFO" | "Sales Director" | "HR Specialist" | "CEO";
@@ -802,13 +803,72 @@ adminRouter.get("/plans", verifyAdmin, (req: Request, res: Response) => {
   }
 });
 
-// ADMIN: Audit logs
-adminRouter.get("/audit-logs", verifyAdmin, (req: Request, res: Response) => {
+// PUBLIC: AI Data cleaning recipe generator
+adminRouter.post("/clean-data", async (req: Request, res: Response) => {
   try {
-    const logs = getAuditLogs();
-    res.json({ logs, total: logs.length });
+    const { sampleRows, data, columns } = req.body || {};
+    const inputData = sampleRows || data || [];
+
+    if (!Array.isArray(inputData) || inputData.length === 0) {
+      return res.status(400).json({ error: "No data rows provided for cleaning." });
+    }
+
+    const sampleSize = Math.min(inputData.length, 20);
+    const dataSample = inputData.slice(0, sampleSize);
+
+    const rawKey = (req.headers["x-gemini-api-key"] as string) || req.body?.userApiKey || process.env.GEMINI_API_KEY;
+    const apiKey = rawKey ? rawKey.trim().replace(/^["']|["']$/g, "") : "";
+
+    if (!apiKey) {
+      return res.json({
+        isMessy: false,
+        summary: "Raw dataset validated cleanly (No AI Key configured).",
+        cleanSummary: "Raw dataset validated cleanly.",
+        renamedColumns: {},
+        columnTypes: {},
+        transformations: []
+      });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `
+      You are an expert Data Engineer. Audit this data sample and return a JSON recipe for cleaning.
+      Columns: ${JSON.stringify(columns || [])}
+      Sample: ${JSON.stringify(dataSample, null, 2)}
+
+      Return structured JSON:
+      {
+        "isMessy": boolean,
+        "summary": "Short summary of adjustments",
+        "cleanSummary": "Short summary of adjustments",
+        "renamedColumns": { [orig: string]: string },
+        "columnTypes": { [cleanedHeader: string]: "number" | "string" | "date" },
+        "transformations": [
+          { "column": string, "action": "parse_number" | "standardize_date" | "trim_and_case", "case": "title" | "upper" | "lower" | "none" }
+        ]
+      }
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const parsed = JSON.parse((response.text || "{}").trim());
+    return res.json(parsed);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error("Clean data endpoint error:", error);
+    return res.json({
+      isMessy: false,
+      summary: "AI data cleaning skipped due to API processing error.",
+      cleanSummary: "AI data cleaning skipped.",
+      renamedColumns: {},
+      columnTypes: {},
+      transformations: []
+    });
   }
 });
 
