@@ -152,3 +152,20 @@ export interface AuditLog {
   timestamp: string;
   status: "success" | "failed";
 }
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  date: string;
+  dueDate: string;
+  customerName: string;
+  customerEmail: string;
+  planName: string;
+  amount: number;
+  taxAmount: number;
+  totalAmount: number;
+  upiId?: string;
+  transactionRef: string;
+  status: "approved" | "pending" | "failed" | "paid";
+}
+
