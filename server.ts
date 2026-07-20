@@ -45,6 +45,64 @@ app.use(express.json({ limit: "10mb" }));
 // Mount Admin Router
 app.use("/api/admin", adminRouter);
 
+// ==========================================
+// SHAREABLE DASHBOARD SHORT LINK SERVICE
+// ==========================================
+const shareStore = new Map<string, { payload: any; createdAt: number }>();
+
+// Cleanup expired share links older than 30 days every hour
+setInterval(() => {
+  const now = Date.now();
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+  for (const [id, item] of shareStore.entries()) {
+    if (now - item.createdAt > thirtyDaysMs) {
+      shareStore.delete(id);
+    }
+  }
+}, 3600000);
+
+// Endpoint to generate a short ID for dashboard share payload
+app.post("/api/share", (req: express.Request, res: express.Response) => {
+  try {
+    const { payload } = req.body;
+    if (!payload) {
+      return res.status(400).json({ error: "Share payload is required" });
+    }
+
+    // Generate clean 6-character alphanumeric ID
+    let shortId = Math.random().toString(36).substring(2, 8);
+    while (shareStore.has(shortId)) {
+      shortId = Math.random().toString(36).substring(2, 8);
+    }
+
+    shareStore.set(shortId, {
+      payload,
+      createdAt: Date.now()
+    });
+
+    res.json({ id: shortId });
+  } catch (err: any) {
+    console.error("Error storing share payload:", err);
+    res.status(500).json({ error: "Failed to generate short link" });
+  }
+});
+
+// Endpoint to retrieve a dashboard share payload by short ID
+app.get("/api/share/:id", (req: express.Request, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const item = shareStore.get(id);
+    if (!item) {
+      return res.status(404).json({ error: "Share link not found or expired" });
+    }
+    res.json({ payload: item.payload });
+  } catch (err: any) {
+    console.error("Error retrieving share payload:", err);
+    res.status(500).json({ error: "Failed to retrieve share link payload" });
+  }
+});
+
+
 // API Endpoint for diagnosing and debugging setup on Vercel/Production
 app.get("/api/debug", async (req, res) => {
   try {

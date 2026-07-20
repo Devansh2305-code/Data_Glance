@@ -25,6 +25,7 @@ import {
   generateHRData, HR_COLUMNS
 } from "./utils";
 import { downloadHTMLReport } from "./reportGenerator";
+import { compactDataset, decompactDataset, compressPayload, decompressPayload } from "./shareUtils";
 import { onAuthStateChanged, signOut, updateProfile } from "firebase/auth";
 import { auth, hasFirebaseConfig } from "./firebase";
 import { supabase, hasSupabaseConfig } from "./supabase";
@@ -378,20 +379,48 @@ export default function App() {
   const [shareCopied, setShareCopied] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
   const [isSampleDropdownOpen, setIsSampleDropdownOpen] = useState(false);
+  const [activePreset, setActivePreset] = useState<string | null>("cmo");
 
-  const handleOpenShareModal = () => {
+  const handleOpenShareModal = async () => {
     try {
-      const sharePayload = {
+      const sharePayload: any = {
         activeRole,
-        dataset: dataset.slice(0, 250), // Send up to 250 rows for smooth URL payload
-        columns,
+        view: currentView,
         measures,
-        widgets,
-        view: currentView
+        widgets
       };
-      const jsonStr = JSON.stringify(sharePayload);
-      const b64Str = btoa(unescape(encodeURIComponent(jsonStr)));
-      const url = `${window.location.origin}${window.location.pathname}#share=${b64Str}`;
+
+      if (activePreset) {
+        sharePayload.preset = activePreset;
+      } else {
+        sharePayload.compactDataset = compactDataset(dataset.slice(0, 250));
+        sharePayload.columns = columns;
+      }
+
+      // 1. Attempt server-side short link (/api/share)
+      try {
+        const response = await fetch("/api/share", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payload: sharePayload })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.id) {
+            const url = `${window.location.origin}${window.location.pathname}#s=${data.id}`;
+            setShareUrl(url);
+            setShareCopied(false);
+            setIsShareModalOpen(true);
+            return;
+          }
+        }
+      } catch (apiErr) {
+        console.warn("Server share endpoint unavailable, using compressed hash fallback:", apiErr);
+      }
+
+      // 2. Client-side compressed URL hash fallback (#cshare=...)
+      const compressedStr = await compressPayload(sharePayload);
+      const url = `${window.location.origin}${window.location.pathname}#cshare=${compressedStr}`;
       setShareUrl(url);
       setShareCopied(false);
       setIsShareModalOpen(true);
@@ -430,13 +459,9 @@ export default function App() {
       sampleCols = HR_COLUMNS;
       sampleData = generateHRData();
       targetRole = "HR Specialist";
-    } else if (presetType === "analyst") {
+    } else if (presetType === "analyst" || presetType === "saas") {
       sampleCols = ANALYST_COLUMNS;
       sampleData = generateAnalystData();
-      targetRole = "Business Analyst";
-    } else if (presetType === "saas") {
-      sampleCols = SAAS_COLUMNS;
-      sampleData = generateSaaSData();
       targetRole = "Business Analyst";
     }
 
@@ -448,6 +473,7 @@ export default function App() {
     setMeasures(templateMeasures);
     setWidgets(templateWidgets);
     setIsCustomDataset(true);
+    setActivePreset(presetType);
     setAiAnalysisResult(null);
     setIsImportOpen(false);
     setIsSampleDropdownOpen(false);
@@ -461,6 +487,7 @@ export default function App() {
     }
     setTimeout(() => setAiCleanMessage(null), 6000);
   };
+
 
   // Synchronize with logged-in user details
   useEffect(() => {
@@ -824,52 +851,120 @@ export default function App() {
     if (isFirstMount.current) {
       isFirstMount.current = false;
 
-      // 1. Check for Shareable Link Snapshot in URL Hash or Query Parameter
+      // Helper to apply parsed share payload into active workspace
+      const applySharePayload = (parsed: any) => {
+        if (!parsed) return false;
+        let targetDataset = parsed.dataset || [];
+        let targetColumns = parsed.columns || [];
+
+        // 1. Expand matrix compressed custom dataset if present
+        if (parsed.compactDataset) {
+          targetDataset = decompactDataset(parsed.compactDataset);
+        }
+
+        // 2. Hydrate sample preset data dynamically if preset key is set
+        if (parsed.preset) {
+          const presetType = parsed.preset;
+          setActivePreset(presetType);
+          if (presetType === "cmo") {
+            targetColumns = CMO_COLUMNS;
+            targetDataset = generateCMOData();
+          } else if (presetType === "cfo") {
+            targetColumns = CFO_COLUMNS;
+            targetDataset = generateCFOData();
+          } else if (presetType === "sales") {
+            targetColumns = SALES_COLUMNS;
+            targetDataset = generateSalesData();
+          } else if (presetType === "hr") {
+            targetColumns = HR_COLUMNS;
+            targetDataset = generateHRData();
+          } else if (presetType === "analyst" || presetType === "saas") {
+            targetColumns = ANALYST_COLUMNS;
+            targetDataset = generateAnalystData();
+          }
+        }
+
+        if (parsed.activeRole) setActiveRole(parsed.activeRole);
+        if (targetDataset.length > 0) setDataset(targetDataset);
+        if (targetColumns.length > 0) setColumns(targetColumns);
+        if (parsed.measures) setMeasures(parsed.measures);
+        if (parsed.widgets) setWidgets(parsed.widgets);
+        setIsCustomDataset(true);
+        if (parsed.view) setView(parsed.view);
+        else setView("report");
+
+        // Auto-login as Guest Viewer if user is not logged in
+        const savedUser = localStorage.getItem("bi-mock-user");
+        if (!savedUser && (!hasFirebaseConfig || !auth?.currentUser)) {
+          const guestUser = {
+            uid: "guest-share-" + Date.now(),
+            email: "viewer@dataglance.com",
+            displayName: JSON.stringify({ name: "Shared Link Guest", role: parsed.activeRole || "CMO" })
+          };
+          setCurrentUser(guestUser);
+          localStorage.setItem("bi-mock-user", JSON.stringify(guestUser));
+        }
+
+        setAiCleanMessage("🔗 Shareable Dashboard Loaded Successfully! Viewing shared snapshot.");
+        setTimeout(() => setAiCleanMessage(null), 8000);
+
+        // Clean URL hash without reloading page
+        window.history.replaceState(null, "", window.location.pathname);
+        return true;
+      };
+
+      // Check URL for #s=ID, #cshare=COMPRESSED, #share=LEGACY, or query parameters
       const hash = window.location.hash;
       const search = window.location.search;
+      const params = new URLSearchParams(search);
+
+      let shortId = "";
+      let cshareStr = "";
       let shareStr = "";
 
-      if (hash && hash.includes("share=")) {
-        shareStr = hash.split("share=")[1];
-      } else if (search && search.includes("share=")) {
-        const params = new URLSearchParams(search);
+      if (hash) {
+        if (hash.includes("s=")) shortId = hash.split("s=")[1];
+        else if (hash.includes("cshare=")) cshareStr = hash.split("cshare=")[1];
+        else if (hash.includes("share=")) shareStr = hash.split("share=")[1];
+      }
+      if (!shortId && !cshareStr && !shareStr && search) {
+        shortId = params.get("s") || "";
+        cshareStr = params.get("cshare") || "";
         shareStr = params.get("share") || "";
+      }
+
+      if (shortId) {
+        fetch(`/api/share/${shortId}`)
+          .then((res) => {
+            if (!res.ok) throw new Error("Short link not found");
+            return res.json();
+          })
+          .then((data) => {
+            if (data?.payload) {
+              applySharePayload(data.payload);
+            }
+          })
+          .catch((err) => console.warn("Failed to load short share link:", err));
+        return;
+      }
+
+      if (cshareStr) {
+        decompressPayload(cshareStr)
+          .then((payload) => {
+            if (payload) applySharePayload(payload);
+          })
+          .catch((err) => console.warn("Failed to decompress share payload:", err));
+        return;
       }
 
       if (shareStr) {
         try {
           const jsonStr = decodeURIComponent(escape(atob(shareStr)));
           const parsed = JSON.parse(jsonStr);
-          if (parsed && (parsed.dataset || parsed.widgets)) {
-            if (parsed.activeRole) setActiveRole(parsed.activeRole);
-            if (parsed.dataset) setDataset(parsed.dataset);
-            if (parsed.columns) setColumns(parsed.columns);
-            if (parsed.measures) setMeasures(parsed.measures);
-            if (parsed.widgets) setWidgets(parsed.widgets);
-            setIsCustomDataset(true);
-            setView("report");
-
-            // Auto-login as Guest Viewer if user is not logged in
-            const savedUser = localStorage.getItem("bi-mock-user");
-            if (!savedUser && (!hasFirebaseConfig || !auth?.currentUser)) {
-              const guestUser = {
-                uid: "guest-share-" + Date.now(),
-                email: "viewer@dataglance.com",
-                displayName: JSON.stringify({ name: "Shared Link Guest", role: parsed.activeRole || "CMO" })
-              };
-              setCurrentUser(guestUser);
-              localStorage.setItem("bi-mock-user", JSON.stringify(guestUser));
-            }
-
-            setAiCleanMessage("🔗 Shareable Dashboard Loaded Successfully! Viewing shared snapshot.");
-            setTimeout(() => setAiCleanMessage(null), 8000);
-
-            // Clean URL hash without reloading page
-            window.history.replaceState(null, "", window.location.pathname);
-            return;
-          }
+          applySharePayload(parsed);
+          return;
         } catch (e) {
-          console.warn("Failed to parse share link parameter:", e);
+          console.warn("Failed to parse legacy share link:", e);
         }
       }
 
@@ -912,6 +1007,7 @@ export default function App() {
     setDataset(importedData);
     setColumns(importedColumns);
     setIsCustomDataset(true);
+    setActivePreset(null);
     setAiAnalysisResult(null);
     setIsImportOpen(false);
 
